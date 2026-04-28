@@ -267,94 +267,13 @@ def main():
         
         if st.session_state.data is not None:
             df = st.session_state.data
-            
-            # ===== DATASET PREVIEW =====
             st.markdown("---")
-            st.markdown("### 📋 Dataset Preview")
             c1,c2,c3 = st.columns(3)
             with c1: st.metric("Samples", df.shape[0])
             with c2: st.metric("Features", df.shape[1])
             with c3: st.metric("Missing", df.isnull().sum().sum())
             st.dataframe(df.head(10), use_container_width=True)
             
-            # ===== ANALYZE DISTRIBUTION OF RISK SCORE =====
-            if 'Risk_Score' in df.columns:
-                st.markdown("---")
-                st.markdown("### 📊 Analyze the Distribution of Risk Score")
-                st.markdown("*Visualize the distribution of the Risk_Score column using a histogram and a box plot*")
-                
-                df['Risk_Score'] = pd.to_numeric(df['Risk_Score'], errors='coerce')
-                clean_risk = df['Risk_Score'].dropna()
-                
-                if len(clean_risk) > 0:
-                    # Distribution plot (Histogram + Box Plot)
-                    fig_dist = plot_distribution(df, 'Risk_Score', 'Risk Score Distribution')
-                    st.plotly_chart(fig_dist, use_container_width=True)
-                    
-                    # Statistics
-                    st.markdown("#### 📊 Risk Score Statistics")
-                    
-                    q1 = clean_risk.quantile(0.25)
-                    q3 = clean_risk.quantile(0.75)
-                    iqr = q3 - q1
-                    skewness = clean_risk.skew()
-                    kurtosis = clean_risk.kurtosis()
-                    
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        st.markdown("**📈 Descriptive Statistics**")
-                        stats_data = [
-                            ('Count', f'{len(clean_risk):,}'),
-                            ('Mean', f'{clean_risk.mean():.4f}'),
-                            ('Median', f'{clean_risk.median():.4f}'),
-                            ('Standard Deviation', f'{clean_risk.std():.4f}'),
-                            ('Minimum', f'{clean_risk.min():.4f}'),
-                            ('25th Percentile (Q1)', f'{q1:.4f}'),
-                            ('75th Percentile (Q3)', f'{q3:.4f}'),
-                            ('IQR', f'{iqr:.4f}'),
-                            ('Maximum', f'{clean_risk.max():.4f}'),
-                            ('Range', f'{clean_risk.max() - clean_risk.min():.4f}'),
-                            ('Skewness', f'{skewness:.4f}'),
-                            ('Kurtosis', f'{kurtosis:.4f}'),
-                        ]
-                        stats_df = pd.DataFrame(stats_data, columns=['Statistic', 'Value'])
-                        st.dataframe(stats_df, use_container_width=True, hide_index=True)
-                    
-                    with col2:
-                        st.markdown("**🎯 Risk Category Distribution**")
-                        
-                        low_risk = (clean_risk < 25).sum()
-                        medium_risk = ((clean_risk >= 25) & (clean_risk < 50)).sum()
-                        high_risk = ((clean_risk >= 50) & (clean_risk < 75)).sum()
-                        critical_risk = (clean_risk >= 75).sum()
-                        
-                        categories = [
-                            ('🟢 Low Risk', '0 - 25', low_risk, '#27ae60'),
-                            ('🟡 Medium Risk', '25 - 50', medium_risk, '#f39c12'),
-                            ('🟠 High Risk', '50 - 75', high_risk, '#e67e22'),
-                            ('🔴 Critical Risk', '75 - 100', critical_risk, '#e74c3c'),
-                        ]
-                        
-                        for cat, rng, count, color in categories:
-                            pct = (count / len(clean_risk)) * 100
-                            st.markdown(f"**{cat}** ({rng}): {count:,} ({pct:.1f}%)")
-                            st.progress(int(pct))
-                        
-                        st.markdown("---")
-                        st.markdown("**📖 Interpretation:**")
-                        st.markdown("""
-                        - **Histogram**: Shows the frequency distribution of Risk Scores. Peaks indicate common score ranges.
-                        - **Box Plot**: Shows the median (middle line), quartiles (box edges), and outliers (dots beyond whiskers).
-                        - **Skewness**: Positive values indicate right-skewed distribution (tail on right side).
-                        - **Categories**: Risk scores grouped into Low (0-25), Medium (25-50), High (50-75), and Critical (75-100).
-                        """)
-                else:
-                    st.warning("⚠️ No valid Risk Score data available.")
-            else:
-                st.info("⚠️ 'Risk_Score' column not found in dataset. Upload a dataset with Risk_Score column to see the distribution.")
-            
-            # ===== FEATURE SCALING PREVIEW =====
             st.markdown("---")
             st.markdown("### 📏 Feature Scaling Preview")
             if st.button("🔧 Apply StandardScaler", type="primary", key="scale_home"):
@@ -371,10 +290,9 @@ def main():
                         st.success(f"✅ {len(cols)} columns scaled!")
                         st.dataframe(sdf.head(), column_config={c: st.column_config.NumberColumn(c,format="%.6f") for c in cols}, use_container_width=True)
             
-            # ===== MP COUNT VS RISK SCORE =====
             if 'MP_Count_per_L' in df.columns and 'Risk_Score' in df.columns:
                 st.markdown("---")
-                st.markdown("### 🔬 Explore Relationship: MP Count vs Risk Score")
+                st.markdown("### 🔬 MP Count vs Risk Score")
                 clean = df.dropna(subset=['MP_Count_per_L','Risk_Score'])
                 if len(clean) > 0:
                     try:
@@ -385,10 +303,9 @@ def main():
                         fig = px.scatter(clean, x='MP_Count_per_L', y='Risk_Score', title='MP Count vs Risk Score', opacity=0.7)
                     st.plotly_chart(fig, use_container_width=True)
             
-            # ===== RISK SCORE BY RISK LEVEL =====
             if 'Risk_Score' in df.columns and 'Risk_Level' in df.columns:
                 st.markdown("---")
-                st.markdown("### 📊 Investigate Difference: Risk Score by Risk Level")
+                st.markdown("### 📊 Risk Score by Risk Level")
                 clean = df.dropna(subset=['Risk_Score'])
                 clean['Risk_Level'] = clean['Risk_Level'].astype(str)
                 if len(clean) > 0:
@@ -396,7 +313,6 @@ def main():
                                 title='Risk Score by Risk Level', points='outliers')
                     st.plotly_chart(fig, use_container_width=True)
             
-            # ===== DATA QUALITY CHECK =====
             st.markdown("---")
             st.markdown("### 🔍 Data Quality Check")
             c1,c2,c3,c4 = st.columns(4)
@@ -770,7 +686,7 @@ def main():
                 if st.session_state.data is not None:
                     df = st.session_state.data
                     pipeline_data.append({'Stage': '1. Data Loading', 'Step': 'Dataset Loaded', 'Status': '✅', 'Details': f'Shape: {df.shape[0]} × {df.shape[1]}'})
-                    pipeline_data.append({'Stage': '1. Data Loading', 'Step': 'Risk Score Distribution', 'Status': '✅', 'Details': 'Histogram & Box Plot' if 'Risk_Score' in df.columns else 'Not available'})
+                    pipeline_data.append({'Stage': '1. Data Loading', 'Step': 'Missing Values', 'Status': '✅', 'Details': f'{df.isnull().sum().sum()} missing'})
                 else:
                     pipeline_data.append({'Stage': '1. Data Loading', 'Step': 'Dataset', 'Status': '❌', 'Details': 'No data loaded'})
                 
@@ -811,4 +727,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-  
