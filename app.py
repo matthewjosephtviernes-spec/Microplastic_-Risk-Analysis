@@ -41,6 +41,22 @@ st.markdown("""
     .stButton > button { width: 100%; background-color: #1f77b4; color: white; font-weight: 600; border-radius: 8px; padding: 0.5rem 1rem; }
     .stButton > button:hover { background-color: #2980b9; border-color: #2980b9; }
     .stMarkdown, .stMarkdown p, .stMarkdown li { color: #2c3e50 !important; }
+    
+    /* Quick nav buttons */
+    .quick-nav-btn { 
+        display: inline-block; 
+        margin: 5px; 
+        padding: 8px 15px; 
+        background-color: #e8f4fd; 
+        border: 2px solid #1f77b4; 
+        border-radius: 20px; 
+        color: #1f77b4; 
+        text-decoration: none; 
+        font-weight: 600; 
+        font-size: 0.9rem;
+        transition: all 0.3s;
+    }
+    .quick-nav-btn:hover { background-color: #1f77b4; color: white; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -52,7 +68,6 @@ def init_session_state():
     if 'feature_importance' not in st.session_state: st.session_state.feature_importance = None
     if 'mutual_info' not in st.session_state: st.session_state.mutual_info = None
     if 'chi2_scores' not in st.session_state: st.session_state.chi2_scores = None
-    if 'X_selected' not in st.session_state: st.session_state.X_selected = None
     if 'trained' not in st.session_state: st.session_state.trained = False
     if 'selected_features' not in st.session_state: st.session_state.selected_features = None
     if 'scaler' not in st.session_state: st.session_state.scaler = None
@@ -63,6 +78,8 @@ def init_session_state():
     if 'evaluation_ran' not in st.session_state: st.session_state.evaluation_ran = False
     if 'comparison_ran' not in st.session_state: st.session_state.comparison_ran = False
     if 'cv_ran' not in st.session_state: st.session_state.cv_ran = False
+    # Home page section state
+    if 'home_section' not in st.session_state: st.session_state.home_section = "upload"
 
 init_session_state()
 
@@ -255,155 +272,203 @@ def main():
     if section == "🏠 Home":
         st.markdown('<p class="section-header">🏠 Home - Upload Dataset</p>', unsafe_allow_html=True)
         
-        c1, c2 = st.columns([2, 1])
-        with c1:
-            f = st.file_uploader("Upload dataset (CSV/Excel)", type=['csv','xlsx','xls'])
-            if f: load_dataset(f)
-        with c2:
-            if st.button("Generate Sample Dataset", type="primary"):
-                st.session_state.data = generate_sample_data()
-                st.success("✅ Sample dataset generated!")
+        # ===== QUICK NAVIGATION BUTTONS =====
+        st.markdown("### 🧭 Quick Navigation")
+        st.markdown("*Click a button to jump directly to that section on this page*")
+        
+        nav_col1, nav_col2, nav_col3, nav_col4, nav_col5, nav_col6 = st.columns(6)
+        
+        with nav_col1:
+            if st.button("📤 Upload", key="nav_upload", use_container_width=True):
+                st.session_state.home_section = "upload"
+                st.rerun()
+        with nav_col2:
+            if st.button("📊 Risk Score Dist", key="nav_risk_dist", use_container_width=True):
+                st.session_state.home_section = "risk_dist"
+                st.rerun()
+        with nav_col3:
+            if st.button("📏 Scaling", key="nav_scaling", use_container_width=True):
+                st.session_state.home_section = "scaling"
+                st.rerun()
+        with nav_col4:
+            if st.button("🔬 MP vs Risk", key="nav_mp_risk", use_container_width=True):
+                st.session_state.home_section = "mp_risk"
+                st.rerun()
+        with nav_col5:
+            if st.button("📊 Risk by Level", key="nav_risk_level", use_container_width=True):
+                st.session_state.home_section = "risk_level"
+                st.rerun()
+        with nav_col6:
+            if st.button("🔍 Quality", key="nav_quality", use_container_width=True):
+                st.session_state.home_section = "quality"
                 st.rerun()
         
-        if st.session_state.data is not None:
-            df = st.session_state.data
+        st.markdown("---")
+        
+        # ===== SECTION: UPLOAD =====
+        if st.session_state.home_section == "upload":
+            st.markdown("### 📤 Upload Dataset")
+            c1, c2 = st.columns([2, 1])
+            with c1:
+                f = st.file_uploader("Upload dataset (CSV/Excel)", type=['csv','xlsx','xls'])
+                if f: load_dataset(f)
+            with c2:
+                if st.button("Generate Sample Dataset", type="primary"):
+                    st.session_state.data = generate_sample_data()
+                    st.success("✅ Sample dataset generated!")
+                    st.rerun()
             
-            # ===== DATASET PREVIEW =====
-            st.markdown("---")
-            st.markdown("### 📋 Dataset Preview")
-            c1,c2,c3 = st.columns(3)
-            with c1: st.metric("Samples", df.shape[0])
-            with c2: st.metric("Features", df.shape[1])
-            with c3: st.metric("Missing", df.isnull().sum().sum())
-            st.dataframe(df.head(10), use_container_width=True)
-            
-            # ===== ANALYZE DISTRIBUTION OF RISK SCORE =====
-            if 'Risk_Score' in df.columns:
+            if st.session_state.data is not None:
+                df = st.session_state.data
                 st.markdown("---")
-                st.markdown("### 📊 Analyze the Distribution of Risk Score")
-                st.markdown("*Visualize the distribution of the Risk_Score column using a histogram and a box plot*")
-                
-                df['Risk_Score'] = pd.to_numeric(df['Risk_Score'], errors='coerce')
-                clean_risk = df['Risk_Score'].dropna()
-                
-                if len(clean_risk) > 0:
-                    # Distribution plot (Histogram + Box Plot)
-                    fig_dist = plot_distribution(df, 'Risk_Score', 'Risk Score Distribution')
-                    st.plotly_chart(fig_dist, use_container_width=True)
-                    
-                    # Statistics
-                    st.markdown("#### 📊 Risk Score Statistics")
-                    
-                    q1 = clean_risk.quantile(0.25)
-                    q3 = clean_risk.quantile(0.75)
-                    iqr = q3 - q1
-                    skewness = clean_risk.skew()
-                    kurtosis = clean_risk.kurtosis()
-                    
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        st.markdown("**📈 Descriptive Statistics**")
-                        stats_data = [
-                            ('Count', f'{len(clean_risk):,}'),
-                            ('Mean', f'{clean_risk.mean():.4f}'),
-                            ('Median', f'{clean_risk.median():.4f}'),
-                            ('Standard Deviation', f'{clean_risk.std():.4f}'),
-                            ('Minimum', f'{clean_risk.min():.4f}'),
-                            ('25th Percentile (Q1)', f'{q1:.4f}'),
-                            ('75th Percentile (Q3)', f'{q3:.4f}'),
-                            ('IQR', f'{iqr:.4f}'),
-                            ('Maximum', f'{clean_risk.max():.4f}'),
-                            ('Range', f'{clean_risk.max() - clean_risk.min():.4f}'),
-                            ('Skewness', f'{skewness:.4f}'),
-                            ('Kurtosis', f'{kurtosis:.4f}'),
-                        ]
-                        stats_df = pd.DataFrame(stats_data, columns=['Statistic', 'Value'])
-                        st.dataframe(stats_df, use_container_width=True, hide_index=True)
-                    
-                    with col2:
-                        st.markdown("**🎯 Risk Category Distribution**")
-                        
-                        low_risk = (clean_risk < 25).sum()
-                        medium_risk = ((clean_risk >= 25) & (clean_risk < 50)).sum()
-                        high_risk = ((clean_risk >= 50) & (clean_risk < 75)).sum()
-                        critical_risk = (clean_risk >= 75).sum()
-                        
-                        categories = [
-                            ('🟢 Low Risk', '0 - 25', low_risk, '#27ae60'),
-                            ('🟡 Medium Risk', '25 - 50', medium_risk, '#f39c12'),
-                            ('🟠 High Risk', '50 - 75', high_risk, '#e67e22'),
-                            ('🔴 Critical Risk', '75 - 100', critical_risk, '#e74c3c'),
-                        ]
-                        
-                        for cat, rng, count, color in categories:
-                            pct = (count / len(clean_risk)) * 100
-                            st.markdown(f"**{cat}** ({rng}): {count:,} ({pct:.1f}%)")
-                            st.progress(int(pct))
-                        
-                        st.markdown("---")
-                        st.markdown("**📖 Interpretation:**")
-                        st.markdown("""
-                        - **Histogram**: Shows the frequency distribution of Risk Scores. Peaks indicate common score ranges.
-                        - **Box Plot**: Shows the median (middle line), quartiles (box edges), and outliers (dots beyond whiskers).
-                        - **Skewness**: Positive values indicate right-skewed distribution (tail on right side).
-                        - **Categories**: Risk scores grouped into Low (0-25), Medium (25-50), High (50-75), and Critical (75-100).
-                        """)
-                else:
-                    st.warning("⚠️ No valid Risk Score data available.")
+                st.markdown("#### 📋 Dataset Preview")
+                c1,c2,c3 = st.columns(3)
+                with c1: st.metric("Samples", df.shape[0])
+                with c2: st.metric("Features", df.shape[1])
+                with c3: st.metric("Missing", df.isnull().sum().sum())
+                st.dataframe(df.head(10), use_container_width=True)
+        
+        # ===== SECTION: RISK SCORE DISTRIBUTION =====
+        elif st.session_state.home_section == "risk_dist":
+            if st.session_state.data is None:
+                st.warning("⚠️ Please upload or generate a dataset first! Go to 📤 Upload.")
             else:
-                st.info("⚠️ 'Risk_Score' column not found in dataset. Upload a dataset with Risk_Score column to see the distribution.")
-            
-            # ===== FEATURE SCALING PREVIEW =====
-            st.markdown("---")
-            st.markdown("### 📏 Feature Scaling Preview")
-            if st.button("🔧 Apply StandardScaler", type="primary", key="scale_home"):
-                with st.spinner('Scaling...'):
-                    nums = df.select_dtypes(include=['float64','int64']).columns.tolist()
-                    cols = [c for c in nums if 'ID' not in c and 'Sample' not in c]
-                    if len(cols) > 0:
-                        scaler = StandardScaler()
-                        sd = scaler.fit_transform(df[cols].fillna(df[cols].median()))
-                        sdf = pd.DataFrame(sd, columns=cols)
-                        st.session_state.scaler = scaler
-                        st.session_state.scaled_columns = cols
-                        st.session_state.scaled_data = sdf
-                        st.success(f"✅ {len(cols)} columns scaled!")
-                        st.dataframe(sdf.head(), column_config={c: st.column_config.NumberColumn(c,format="%.6f") for c in cols}, use_container_width=True)
-            
-            # ===== MP COUNT VS RISK SCORE =====
-            if 'MP_Count_per_L' in df.columns and 'Risk_Score' in df.columns:
+                df = st.session_state.data
+                if 'Risk_Score' in df.columns:
+                    st.markdown("### 📊 Analyze the Distribution of Risk Score")
+                    st.markdown("*Visualize the distribution of the Risk_Score column using a histogram and a box plot*")
+                    
+                    df['Risk_Score'] = pd.to_numeric(df['Risk_Score'], errors='coerce')
+                    clean_risk = df['Risk_Score'].dropna()
+                    
+                    if len(clean_risk) > 0:
+                        fig_dist = plot_distribution(df, 'Risk_Score', 'Risk Score Distribution')
+                        st.plotly_chart(fig_dist, use_container_width=True)
+                        
+                        q1 = clean_risk.quantile(0.25)
+                        q3 = clean_risk.quantile(0.75)
+                        iqr = q3 - q1
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.markdown("**📈 Descriptive Statistics**")
+                            stats_data = [
+                                ('Count', f'{len(clean_risk):,}'),
+                                ('Mean', f'{clean_risk.mean():.4f}'),
+                                ('Median', f'{clean_risk.median():.4f}'),
+                                ('Std Dev', f'{clean_risk.std():.4f}'),
+                                ('Min', f'{clean_risk.min():.4f}'),
+                                ('Q1', f'{q1:.4f}'),
+                                ('Q3', f'{q3:.4f}'),
+                                ('IQR', f'{iqr:.4f}'),
+                                ('Max', f'{clean_risk.max():.4f}'),
+                                ('Skewness', f'{clean_risk.skew():.4f}'),
+                            ]
+                            st.dataframe(pd.DataFrame(stats_data, columns=['Statistic','Value']), use_container_width=True, hide_index=True)
+                        
+                        with col2:
+                            st.markdown("**🎯 Risk Categories**")
+                            cats = [
+                                ('🟢 Low (0-25)', (clean_risk<25).sum(), '#27ae60'),
+                                ('🟡 Medium (25-50)', ((clean_risk>=25)&(clean_risk<50)).sum(), '#f39c12'),
+                                ('🟠 High (50-75)', ((clean_risk>=50)&(clean_risk<75)).sum(), '#e67e22'),
+                                ('🔴 Critical (75-100)', (clean_risk>=75).sum(), '#e74c3c'),
+                            ]
+                            for cat, cnt, color in cats:
+                                pct = (cnt/len(clean_risk))*100
+                                st.markdown(f"**{cat}**: {cnt:,} ({pct:.1f}%)")
+                                st.progress(int(pct))
+                else:
+                    st.info("⚠️ 'Risk_Score' column not found.")
+        
+        # ===== SECTION: FEATURE SCALING =====
+        elif st.session_state.home_section == "scaling":
+            if st.session_state.data is None:
+                st.warning("⚠️ Please upload or generate a dataset first! Go to 📤 Upload.")
+            else:
+                df = st.session_state.data
+                st.markdown("### 📏 Feature Scaling Preview")
+                st.markdown("*Apply StandardScaler to numerical columns*")
+                
+                if st.button("🔧 Apply StandardScaler", type="primary", key="scale_home"):
+                    with st.spinner('Scaling...'):
+                        nums = df.select_dtypes(include=['float64','int64']).columns.tolist()
+                        cols = [c for c in nums if 'ID' not in c and 'Sample' not in c]
+                        if len(cols) > 0:
+                            scaler = StandardScaler()
+                            sd = scaler.fit_transform(df[cols].fillna(df[cols].median()))
+                            sdf = pd.DataFrame(sd, columns=cols)
+                            st.session_state.scaler = scaler
+                            st.session_state.scaled_columns = cols
+                            st.session_state.scaled_data = sdf
+                            st.success(f"✅ {len(cols)} columns scaled! Mean=0, Std=1")
+                            st.dataframe(sdf.head(), column_config={c: st.column_config.NumberColumn(c,format="%.6f") for c in cols}, use_container_width=True)
+        
+        # ===== SECTION: MP COUNT VS RISK SCORE =====
+        elif st.session_state.home_section == "mp_risk":
+            if st.session_state.data is None:
+                st.warning("⚠️ Please upload or generate a dataset first! Go to 📤 Upload.")
+            else:
+                df = st.session_state.data
+                if 'MP_Count_per_L' in df.columns and 'Risk_Score' in df.columns:
+                    st.markdown("### 🔬 Explore Relationship: MP Count vs Risk Score")
+                    st.markdown("*Create a scatter plot to visualize the relationship between Risk_Score and MP_Count_per_L*")
+                    
+                    df['MP_Count_per_L'] = pd.to_numeric(df['MP_Count_per_L'], errors='coerce')
+                    df['Risk_Score'] = pd.to_numeric(df['Risk_Score'], errors='coerce')
+                    clean = df.dropna(subset=['MP_Count_per_L','Risk_Score'])
+                    if len(clean) > 0:
+                        try:
+                            fig = px.scatter(clean, x='MP_Count_per_L', y='Risk_Score',
+                                            color='Risk_Level' if 'Risk_Level' in clean.columns else None,
+                                            trendline='ols', title='MP Count vs Risk Score', opacity=0.7,
+                                            labels={'MP_Count_per_L': 'MP Count per Liter', 'Risk_Score': 'Risk Score'})
+                        except:
+                            fig = px.scatter(clean, x='MP_Count_per_L', y='Risk_Score', title='MP Count vs Risk Score', opacity=0.7,
+                                            labels={'MP_Count_per_L': 'MP Count per Liter', 'Risk_Score': 'Risk Score'})
+                        st.plotly_chart(fig, use_container_width=True)
+                        
+                        correlation = clean['MP_Count_per_L'].corr(clean['Risk_Score'])
+                        st.metric("Correlation (r)", f"{correlation:.4f}")
+                else:
+                    st.info("⚠️ Required columns not found.")
+        
+        # ===== SECTION: RISK SCORE BY RISK LEVEL =====
+        elif st.session_state.home_section == "risk_level":
+            if st.session_state.data is None:
+                st.warning("⚠️ Please upload or generate a dataset first! Go to 📤 Upload.")
+            else:
+                df = st.session_state.data
+                if 'Risk_Score' in df.columns and 'Risk_Level' in df.columns:
+                    st.markdown("### 📊 Investigate Difference: Risk Score by Risk Level")
+                    st.markdown("*Use box plots to visualize the distribution of Risk_Score for each Risk_Level category*")
+                    
+                    df['Risk_Score'] = pd.to_numeric(df['Risk_Score'], errors='coerce')
+                    clean = df.dropna(subset=['Risk_Score'])
+                    clean['Risk_Level'] = clean['Risk_Level'].astype(str)
+                    if len(clean) > 0:
+                        fig = px.box(clean, x='Risk_Level', y='Risk_Score', color='Risk_Level',
+                                    title='Risk Score Distribution by Risk Level', points='outliers')
+                        st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.info("⚠️ Required columns not found.")
+        
+        # ===== SECTION: DATA QUALITY =====
+        elif st.session_state.home_section == "quality":
+            if st.session_state.data is None:
+                st.warning("⚠️ Please upload or generate a dataset first! Go to 📤 Upload.")
+            else:
+                df = st.session_state.data
+                st.markdown("### 🔍 Data Quality Check")
+                c1,c2,c3,c4 = st.columns(4)
+                with c1: st.metric("Missing %", f"{(df.isnull().sum().sum()/(df.shape[0]*df.shape[1]))*100:.2f}%")
+                with c2: st.metric("Duplicates", df.duplicated().sum())
+                with c3: st.metric("Numeric Cols", len(df.select_dtypes(include=['float64','int64']).columns))
+                with c4: st.metric("Categorical Cols", len(df.select_dtypes(include=['object']).columns))
+                
                 st.markdown("---")
-                st.markdown("### 🔬 Explore Relationship: MP Count vs Risk Score")
-                clean = df.dropna(subset=['MP_Count_per_L','Risk_Score'])
-                if len(clean) > 0:
-                    try:
-                        fig = px.scatter(clean, x='MP_Count_per_L', y='Risk_Score',
-                                        color='Risk_Level' if 'Risk_Level' in clean.columns else None,
-                                        trendline='ols', title='MP Count vs Risk Score', opacity=0.7)
-                    except:
-                        fig = px.scatter(clean, x='MP_Count_per_L', y='Risk_Score', title='MP Count vs Risk Score', opacity=0.7)
-                    st.plotly_chart(fig, use_container_width=True)
-            
-            # ===== RISK SCORE BY RISK LEVEL =====
-            if 'Risk_Score' in df.columns and 'Risk_Level' in df.columns:
-                st.markdown("---")
-                st.markdown("### 📊 Investigate Difference: Risk Score by Risk Level")
-                clean = df.dropna(subset=['Risk_Score'])
-                clean['Risk_Level'] = clean['Risk_Level'].astype(str)
-                if len(clean) > 0:
-                    fig = px.box(clean, x='Risk_Level', y='Risk_Score', color='Risk_Level',
-                                title='Risk Score by Risk Level', points='outliers')
-                    st.plotly_chart(fig, use_container_width=True)
-            
-            # ===== DATA QUALITY CHECK =====
-            st.markdown("---")
-            st.markdown("### 🔍 Data Quality Check")
-            c1,c2,c3,c4 = st.columns(4)
-            with c1: st.metric("Missing %", f"{(df.isnull().sum().sum()/(df.shape[0]*df.shape[1]))*100:.2f}%")
-            with c2: st.metric("Duplicates", df.duplicated().sum())
-            with c3: st.metric("Numeric Cols", len(df.select_dtypes(include=['float64','int64']).columns))
-            with c4: st.metric("Categorical Cols", len(df.select_dtypes(include=['object']).columns))
+                st.markdown("#### Data Types")
+                st.write(df.dtypes)
     
     # ==================== PREPROCESSING ====================
     elif section == "🔧 Preprocessing":
@@ -500,7 +565,6 @@ def main():
         
         if 'MP_Count_per_L' in df.columns and 'Risk_Score' in df.columns:
             st.markdown("---")
-            st.markdown("#### 🔬 MP Count vs Risk Score")
             clean = df.dropna(subset=['MP_Count_per_L','Risk_Score'])
             if not clean.empty:
                 try:
@@ -513,7 +577,6 @@ def main():
         
         if 'Risk_Level' in df.columns and 'Risk_Score' in df.columns:
             st.markdown("---")
-            st.markdown("#### 📊 Risk Score by Risk Level")
             clean = df.dropna(subset=['Risk_Score'])
             clean['Risk_Level'] = clean['Risk_Level'].astype(str)
             if len(clean) > 0:
@@ -522,7 +585,6 @@ def main():
         
         st.markdown("---")
         st.markdown("### 🎯 Feature Selection Methods")
-        st.info("**📖 Higher scores = More important features**")
         
         target_col = st.selectbox("Select Target Variable", df.columns.tolist(),
                                   index=df.columns.tolist().index('Risk_Type') if 'Risk_Type' in df.columns else 0)
@@ -554,24 +616,20 @@ def main():
                     fig = px.bar(rf_df.head(20), x='Importance', y='Feature', orientation='h',
                                title='Random Forest Feature Importance', height=500)
                     st.plotly_chart(fig, use_container_width=True)
-                    st.dataframe(rf_df.head(20), use_container_width=True, hide_index=True)
                 
                 with ft2:
                     st.markdown("**Top 20 features - Mutual Information:**")
                     fig = px.bar(mi_df.head(20), x='Mutual_Info', y='Feature', orientation='h',
                                title='Mutual Information Scores', height=500)
                     st.plotly_chart(fig, use_container_width=True)
-                    st.dataframe(mi_df.head(20), use_container_width=True, hide_index=True)
                 
                 with ft3:
                     st.markdown("**Top 20 features - Chi-squared Test:**")
                     fig = px.bar(chi2_df.head(20), x='Chi2_Score', y='Feature', orientation='h',
                                title='Chi-squared Test Scores', height=500)
                     st.plotly_chart(fig, use_container_width=True)
-                    st.dataframe(chi2_df.head(20), use_container_width=True, hide_index=True)
                 
-                st.success(f"✅ Top {len(st.session_state.selected_features)} features selected!")
-                st.markdown(f"**Selected Features:** {', '.join(st.session_state.selected_features[:5])}...")
+                st.success(f"✅ Feature selection completed!")
     
     # ==================== MODELING ====================
     elif section == "🤖 Modeling":
@@ -642,10 +700,8 @@ def main():
             "📋 Pipeline Summary"
         ])
         
-        # ===== TAB 1: EVALUATE MODELS =====
         with eval_tab1:
             st.markdown("### 📊 Evaluate the Models")
-            
             target_col = 'Risk_Type'
             if target_col not in df.columns:
                 st.error(f"❌ '{target_col}' column not found!")
@@ -687,10 +743,8 @@ def main():
                         best_f1 = metrics_df.loc[metrics_df['F1-Score'].idxmax()]
                         st.success(f"Best Accuracy: **{best_acc['Model']}** ({best_acc['Accuracy']:.4f}) | Best F1: **{best_f1['Model']}** ({best_f1['F1-Score']:.4f})")
         
-        # ===== TAB 2: COMPARE BOTH TARGETS =====
         with eval_tab2:
             st.markdown("### 📊 Compare Model Performance (Both Targets)")
-            
             if st.button("🚀 Train & Compare Both Targets", type="primary", key="compare_both"):
                 all_comp = {}
                 for tc in ['Risk_Type', 'Risk_Level']:
@@ -712,10 +766,8 @@ def main():
                         st.dataframe(mdf, column_config={"Model":"Model","Accuracy":st.column_config.NumberColumn("Accuracy",format="%.4f"),"F1-Score":st.column_config.NumberColumn("F1-Score",format="%.4f")}, use_container_width=True, hide_index=True)
                         st.markdown("---")
         
-        # ===== TAB 3: CROSS VALIDATION =====
         with eval_tab3:
             st.markdown("### 🔄 Cross Validation Analysis")
-            
             target = st.selectbox("Target for CV", df.columns.tolist(),
                                  index=df.columns.tolist().index('Risk_Type') if 'Risk_Type' in df.columns else 0)
             nums = df.select_dtypes(include=['float64','int64','int32']).columns.tolist()
@@ -759,36 +811,27 @@ def main():
                     fig_cv.update_layout(title=f'CV F1 Scores ({folds}-Fold)', yaxis_title='F1 Score', height=400)
                     st.plotly_chart(fig_cv, use_container_width=True)
         
-        # ===== TAB 4: PIPELINE SUMMARY =====
         with eval_tab4:
             st.markdown("### 📋 Overall Pipeline Summary")
-            
             if st.button("🔄 Generate Pipeline Summary", type="primary", key="pipeline_summary", use_container_width=True):
-                
                 pipeline_data = []
                 
                 if st.session_state.data is not None:
                     df = st.session_state.data
                     pipeline_data.append({'Stage': '1. Data Loading', 'Step': 'Dataset Loaded', 'Status': '✅', 'Details': f'Shape: {df.shape[0]} × {df.shape[1]}'})
-                    pipeline_data.append({'Stage': '1. Data Loading', 'Step': 'Risk Score Distribution', 'Status': '✅', 'Details': 'Histogram & Box Plot' if 'Risk_Score' in df.columns else 'Not available'})
                 else:
                     pipeline_data.append({'Stage': '1. Data Loading', 'Step': 'Dataset', 'Status': '❌', 'Details': 'No data loaded'})
                 
                 pipeline_data.append({'Stage': '2. Preprocessing', 'Step': 'Feature Scaling', 'Status': '✅' if st.session_state.get('scaled_data') else '⬜', 'Details': f'{len(st.session_state.get("scaled_columns",[]))} cols' if st.session_state.get('scaled_data') else 'Not applied'})
                 pipeline_data.append({'Stage': '2. Preprocessing', 'Step': 'One-Hot Encoding', 'Status': '✅' if st.session_state.get('encoded_data') else '⬜', 'Details': f'Shape: {st.session_state.get("encoded_shape","N/A")}' if st.session_state.get('encoded_data') else 'Not applied'})
                 pipeline_data.append({'Stage': '2. Preprocessing', 'Step': 'Outlier Capping', 'Status': '✅' if st.session_state.get('processed_data') else '⬜', 'Details': 'IQR method' if st.session_state.get('processed_data') else 'Not applied'})
-                
                 pipeline_data.append({'Stage': '3. Feature Selection', 'Step': 'Feature Importance', 'Status': '✅' if st.session_state.get('feature_importance') else '⬜', 'Details': 'MI, Chi2, RF' if st.session_state.get('feature_importance') else 'Not run'})
-                
                 pipeline_data.append({'Stage': '4. Modeling', 'Step': 'Models Trained', 'Status': '✅' if st.session_state.get('trained') else '⬜', 'Details': f'{len(st.session_state.get("models",{}))} models' if st.session_state.get('trained') else 'Not trained'})
-                
                 pipeline_data.append({'Stage': '5. Evaluation', 'Step': 'Model Evaluation', 'Status': '✅' if st.session_state.get('evaluation_ran') else '⬜', 'Details': 'Metrics computed' if st.session_state.get('evaluation_ran') else 'Not run'})
                 pipeline_data.append({'Stage': '5. Evaluation', 'Step': 'Target Comparison', 'Status': '✅' if st.session_state.get('comparison_ran') else '⬜', 'Details': 'Both targets' if st.session_state.get('comparison_ran') else 'Not run'})
                 pipeline_data.append({'Stage': '5. Evaluation', 'Step': 'Cross Validation', 'Status': '✅' if st.session_state.get('cv_ran') else '⬜', 'Details': 'K-Fold CV' if st.session_state.get('cv_ran') else 'Not run'})
                 
                 pipeline_df = pd.DataFrame(pipeline_data)
-                
-                st.markdown("### 📊 Complete Analysis Pipeline")
                 st.dataframe(pipeline_df, column_config={
                     "Stage": st.column_config.TextColumn("Stage", width="small"),
                     "Step": st.column_config.TextColumn("Step", width="medium"),
@@ -797,15 +840,7 @@ def main():
                 }, use_container_width=True, height=450)
                 
                 completed = sum(1 for d in pipeline_data if d['Status'] == '✅')
-                not_run = sum(1 for d in pipeline_data if d['Status'] == '⬜')
-                failed = sum(1 for d in pipeline_data if d['Status'] == '❌')
                 total = len(pipeline_data)
-                
-                st.markdown("---")
-                c1,c2,c3 = st.columns(3)
-                with c1: st.metric("✅ Completed", completed)
-                with c2: st.metric("⬜ Pending", not_run)
-                with c3: st.metric("❌ Failed", failed)
                 st.progress(int((completed/total)*100) if total>0 else 0, text=f"Progress: {int((completed/total)*100)}% ({completed}/{total})")
 
 
