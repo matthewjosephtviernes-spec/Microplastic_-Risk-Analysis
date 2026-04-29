@@ -117,6 +117,12 @@ st.markdown("""
         gap: 1rem;
         margin: 1rem 0;
     }
+    .encode-box {
+        background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+        padding: 1.5rem;
+        border-radius: 10px;
+        margin: 1rem 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -148,6 +154,10 @@ def init_session_state():
         st.session_state.encoded_data = None
     if 'encoded_shape' not in st.session_state: 
         st.session_state.encoded_shape = None
+    if 'encoded_new_cols' not in st.session_state:
+        st.session_state.encoded_new_cols = []
+    if 'encoded_original_cols' not in st.session_state:
+        st.session_state.encoded_original_cols = []
     if 'evaluation_ran' not in st.session_state: 
         st.session_state.evaluation_ran = False
     if 'comparison_ran' not in st.session_state: 
@@ -201,18 +211,26 @@ def generate_sample_data():
     n = 1000
     data = {
         'Sample_ID': [f'MP_{i:04d}' for i in range(n)],
+        'Latitude': np.random.uniform(-90, 90, n),
+        'Longitude': np.random.uniform(-180, 180, n),
+        'Microplastic_Size_mm': np.random.normal(2.5, 1.5, n),
+        'Density': np.random.normal(1.0, 0.1, n),
         'MP_Count_per_L': np.random.poisson(lam=50, size=n),
         'Particle_Size_um': np.random.normal(100, 30, n),
         'Microplastic_Size_mm_midpoint': np.random.normal(2.5, 1.5, n),
         'Density_midpoint': np.random.normal(1.0, 0.1, n),
         'Polymer_Type': np.random.choice(['PE','PP','PS','PET','PVC','Nylon'], n),
         'Water_Source': np.random.choice(['River','Lake','Ocean','Groundwater','Tap'], n),
-        'pH': np.random.normal(7, 0.5, n), 
+        'pH': np.random.choice(['Acidic','Neutral','Alkaline'], n),
+        'Salinity': np.random.choice(['Fresh','Brackish','Saline'], n),
         'Temperature_C': np.random.normal(20, 5, n),
         'Risk_Score': np.random.uniform(0, 100, n),
         'Risk_Level': np.random.choice(['Low','Medium','High','Critical'], n, p=[0.3,0.35,0.25,0.1]),
         'Risk_Type': np.random.choice(['Type_A','Type_B','Type_C'], n, p=[0.5,0.3,0.2]),
         'Location': np.random.choice(['Urban','Rural','Industrial','Coastal'], n),
+        'Shape': np.random.choice(['Fiber','Fragment','Sphere','Film'], n),
+        'Industrial_Activity': np.random.choice(['Low','Moderate','High'], n),
+        'Population_Density': np.random.choice(['Low','Medium','High'], n),
         'Season': np.random.choice(['Winter','Spring','Summer','Fall'], n),
         'Author': np.random.choice(['Author_A','Author_B','Author_C'], n),
         'Source': np.random.choice(['Source_1','Source_2','Source_3'], n)
@@ -370,20 +388,6 @@ def create_outlier_summary_table(stats_before, stats_after, numerical_cols):
                 'Skew After': f"{stats_after[col]['skewness']:.4f}"
             })
     return pd.DataFrame(summary_data)
-
-def one_hot_encode(df):
-    """One-hot encode categorical variables"""
-    try:
-        cats = df.select_dtypes(include=['object']).columns.tolist()
-        cols = [c for c in cats if 'ID' not in c and 'Sample' not in c]
-        if len(cols) == 0: 
-            return df, [], [], df.shape
-        df_enc = pd.get_dummies(df, columns=cols, drop_first=False)
-        new = [c for c in df_enc.columns if c not in df.columns]
-        return df_enc, new, cols, df_enc.shape
-    except Exception as e:
-        st.error(f"Encoding error: {e}")
-        return df, [], [], df.shape
 
 def analyze_skewness(df, columns):
     """Analyze skewness of numerical columns"""
@@ -1441,37 +1445,159 @@ def main():
         # ==================== PREPROCESSING TAB 2: Categorical Encoding ====================
         with p2:
             st.markdown("### 🔄 Categorical Encoding")
-            st.markdown("Convert categorical variables to numerical using one-hot encoding")
+            st.markdown("""
+            **Subtask:** Encode the categorical columns using one-hot encoding.
             
-            categorical_cols = df.select_dtypes(include=['object']).columns.tolist()
-            categorical_cols = [c for c in categorical_cols if 'ID' not in c and 'Sample' not in c]
+            One-hot encoding creates binary columns for each category, allowing machine learning 
+            algorithms to work with categorical data effectively.
+            """)
             
-            if len(categorical_cols) == 0:
-                st.info("No categorical columns found for encoding")
-            else:
-                selected_cats = st.multiselect(
-                    "Select categorical columns to encode:",
-                    categorical_cols,
-                    default=categorical_cols,
-                    key="encode_cols"
-                )
+            # Identify categorical columns as specified
+            categorical_cols = ['Location', 'Shape', 'Polymer_Type', 'pH', 'Salinity', 
+                              'Industrial_Activity', 'Population_Density', 'Risk_Type', 
+                              'Risk_Level', 'Author', 'Source']
+            
+            # Check which of these columns exist in the dataframe
+            available_cats = [col for col in categorical_cols if col in df.columns]
+            missing_cats = [col for col in categorical_cols if col not in df.columns]
+            
+            if missing_cats:
+                st.warning(f"⚠️ Some specified columns not found in dataset: {', '.join(missing_cats)}")
+            
+            if len(available_cats) == 0:
+                st.error("❌ None of the specified categorical columns found in the dataset!")
                 
-                if selected_cats and st.button("Apply Encoding", key="encode_btn"):
-                    df_encoded = pd.get_dummies(df, columns=selected_cats, drop_first=False)
-                    st.session_state.processed_data = df_encoded
-                    st.session_state.encoded_data = df_encoded
-                    st.session_state.encoded_shape = df_encoded.shape
-                    
-                    st.success(f"✅ One-hot encoding applied! Shape: {df.shape} → {df_encoded.shape}")
-                    st.info(f"Added {df_encoded.shape[1] - df.shape[1]} new columns")
-                    
-                    st.markdown("**Preview of encoded data:**")
-                    st.dataframe(df_encoded.head())
-                    
-                    # Show new columns
-                    new_cols = [c for c in df_encoded.columns if c not in df.columns]
-                    with st.expander(f"View {len(new_cols)} new columns"):
-                        st.write(new_cols)
+                # Show actual categorical columns in the dataset
+                actual_cats = df.select_dtypes(include=['object']).columns.tolist()
+                st.info(f"Available categorical columns in dataset: {', '.join(actual_cats) if actual_cats else 'None found'}")
+            else:
+                st.markdown(f"**📊 Categorical columns to encode ({len(available_cats)}):**")
+                
+                # Display the columns in a nice format
+                cols_per_row = 3
+                for i in range(0, len(available_cats), cols_per_row):
+                    cols = st.columns(cols_per_row)
+                    for j, col_name in enumerate(available_cats[i:i+cols_per_row]):
+                        with cols[j]:
+                            unique_vals = df[col_name].nunique()
+                            st.info(f"**{col_name}**\n{unique_vals} unique values")
+                
+                # Show original data before encoding
+                st.markdown("---")
+                st.markdown("### 📋 Data Before Encoding")
+                st.markdown("**First 5 rows of original categorical data:**")
+                st.dataframe(df[available_cats].head(), use_container_width=True)
+                
+                # Show value counts for each categorical column
+                with st.expander("🔍 View Value Counts for Each Categorical Column"):
+                    for col in available_cats:
+                        st.markdown(f"**{col}:**")
+                        st.dataframe(df[col].value_counts().reset_index().rename(
+                            columns={'index': 'Value', col: 'Count'}).head(10), 
+                            use_container_width=True, hide_index=True)
+                
+                st.markdown("---")
+                
+                # Apply One-Hot Encoding
+                st.markdown("### 🔧 Apply One-Hot Encoding")
+                st.markdown("""
+                **One-Hot Encoding Process:**
+                - Each category value becomes a new binary column (0 or 1)
+                - `drop_first=True` removes the first category to avoid multicollinearity
+                - Original categorical columns are removed and replaced with encoded columns
+                """)
+                
+                if st.button("🔄 Apply One-Hot Encoding", type="primary", key="encode_btn"):
+                    with st.spinner('Applying one-hot encoding...'):
+                        # Apply one-hot encoding
+                        df_encoded = pd.get_dummies(df, columns=available_cats, drop_first=True)
+                        
+                        # Identify new columns created
+                        new_cols = [c for c in df_encoded.columns if c not in df.columns or c in available_cats]
+                        original_shape = df.shape
+                        encoded_shape = df_encoded.shape
+                        
+                        # Store in session state
+                        st.session_state.processed_data = df_encoded
+                        st.session_state.encoded_data = df_encoded
+                        st.session_state.encoded_shape = encoded_shape
+                        st.session_state.encoded_new_cols = new_cols
+                        st.session_state.encoded_original_cols = available_cats
+                        
+                        st.success(f"✅ One-hot encoding applied successfully!")
+                        
+                        # Display encoding summary
+                        st.markdown("---")
+                        st.markdown("### 📊 Encoding Results")
+                        
+                        # Show shape comparison
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Original Shape", f"{original_shape[0]} × {original_shape[1]}")
+                        with col2:
+                            st.metric("Encoded Shape", f"{encoded_shape[0]} × {encoded_shape[1]}")
+                        with col3:
+                            st.metric("New Columns Added", encoded_shape[1] - original_shape[1])
+                        
+                        st.markdown("---")
+                        
+                        # Display the first few rows of the DataFrame with encoded categorical variables
+                        st.markdown("### First 5 rows of the DataFrame after one-hot encoding:")
+                        st.dataframe(df_encoded.head(), use_container_width=True)
+                        
+                        # Display the shape of the resulting DataFrame
+                        st.markdown("### Shape of the DataFrame after one-hot encoding:")
+                        st.info(f"**Rows:** {encoded_shape[0]:,} | **Columns:** {encoded_shape[1]:,}")
+                        
+                        st.markdown("---")
+                        
+                        # Show new columns created
+                        st.markdown("### 📋 New Encoded Columns Created")
+                        
+                        # Group new columns by original category
+                        for cat in available_cats:
+                            related_cols = [c for c in new_cols if c.startswith(cat + '_')]
+                            if related_cols:
+                                with st.expander(f"📌 {cat} → {len(related_cols)} new columns"):
+                                    st.write(related_cols)
+                        
+                        # Show column types after encoding
+                        st.markdown("---")
+                        st.markdown("### 📊 Column Types After Encoding")
+                        
+                        dtype_counts = df_encoded.dtypes.value_counts()
+                        dtype_df = pd.DataFrame({
+                            'Data Type': dtype_counts.index.astype(str),
+                            'Count': dtype_counts.values
+                        })
+                        st.dataframe(dtype_df, use_container_width=True, hide_index=True)
+                        
+                        # Download encoded data
+                        st.markdown("---")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            csv_encoded = df_encoded.to_csv(index=False)
+                            st.download_button(
+                                label="📥 Download Encoded Data (CSV)",
+                                data=csv_encoded,
+                                file_name="encoded_microplastic_data.csv",
+                                mime="text/csv",
+                                use_container_width=True
+                            )
+                        with col2:
+                            # Download encoding summary
+                            encoding_summary = pd.DataFrame({
+                                'Original Column': available_cats,
+                                'New Columns Created': [len([c for c in new_cols if c.startswith(cat + '_')]) for cat in available_cats]
+                            })
+                            csv_summary = encoding_summary.to_csv(index=False)
+                            st.download_button(
+                                label="📥 Download Encoding Summary (CSV)",
+                                data=csv_summary,
+                                file_name="encoding_summary.csv",
+                                mime="text/csv",
+                                use_container_width=True
+                            )
         
         # ==================== PREPROCESSING TAB 3: Outlier Handling ====================
         with p3:
@@ -1796,9 +1922,9 @@ def main():
             
             if st.session_state.get('encoded_data') is not None:
                 summary_items.append({
-                    'Step': 'Categorical Encoding',
+                    'Step': 'Categorical Encoding (One-Hot)',
                     'Status': '✅',
-                    'Details': f"Original shape: {st.session_state.data.shape}, Encoded shape: {st.session_state.encoded_shape}"
+                    'Details': f"Encoded {len(st.session_state.encoded_original_cols)} columns. Original shape: {st.session_state.data.shape}, Encoded shape: {st.session_state.encoded_shape}"
                 })
             
             if len(st.session_state.get('outlier_columns_processed', [])) > 0:
@@ -2236,9 +2362,9 @@ def main():
                     {'Stage': '2. Preprocessing', 'Step': 'Feature Scaling (StandardScaler)',
                      'Status': '✅' if st.session_state.get('scaled_columns') else '⬜',
                      'Details': f"Scaled {len(st.session_state.get('scaled_columns', []))} columns" if st.session_state.get('scaled_columns') else 'Not applied'},
-                    {'Stage': '2. Preprocessing', 'Step': 'Categorical Encoding',
+                    {'Stage': '2. Preprocessing', 'Step': 'Categorical Encoding (One-Hot)',
                      'Status': '✅' if st.session_state.get('encoded_data') is not None else '⬜',
-                     'Details': f"Shape: {st.session_state.get('encoded_shape')}" if st.session_state.get('encoded_data') is not None else 'Not applied'},
+                     'Details': f"Encoded {len(st.session_state.get('encoded_original_cols', []))} columns. Shape: {st.session_state.get('encoded_shape')}" if st.session_state.get('encoded_data') is not None else 'Not applied'},
                     {'Stage': '2. Preprocessing', 'Step': 'Outlier Handling (IQR)',
                      'Status': '✅' if len(st.session_state.get('outlier_columns_processed', [])) > 0 else '⬜',
                      'Details': f"Processed {len(st.session_state.get('outlier_columns_processed', []))} columns" if len(st.session_state.get('outlier_columns_processed', [])) > 0 else 'Not applied'},
