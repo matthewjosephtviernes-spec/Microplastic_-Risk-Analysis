@@ -112,6 +112,11 @@ st.markdown("""
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         margin: 0.5rem 0;
     }
+    .outlier-comparison {
+        display: flex;
+        gap: 1rem;
+        margin: 1rem 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -155,6 +160,10 @@ def init_session_state():
         st.session_state.outlier_stats_after = None
     if 'outlier_columns_processed' not in st.session_state: 
         st.session_state.outlier_columns_processed = []
+    if 'outlier_bounds' not in st.session_state:
+        st.session_state.outlier_bounds = {}
+    if 'outlier_counts' not in st.session_state:
+        st.session_state.outlier_counts = {}
 
 init_session_state()
 
@@ -235,7 +244,7 @@ def detect_outliers_detailed(df, columns):
     """Detect outliers using IQR method with detailed statistics"""
     outlier_info = {}
     for col in columns:
-        if df[col].dtype in ['float64', 'int64']:
+        if col in df.columns and df[col].dtype in ['float64', 'int64']:
             clean_data = df[col].dropna()
             if len(clean_data) == 0:
                 continue
@@ -262,50 +271,104 @@ def detect_outliers_detailed(df, columns):
             }
     return outlier_info
 
-def cap_outliers_iqr_detailed(df, columns):
-    """Cap outliers using IQR method"""
+def cap_outliers_iqr(df, numerical_cols):
+    """
+    Handle outliers using IQR method (capping)
+    Caps outliers at upper and lower bounds calculated by IQR method
+    """
     df_capped = df.copy()
-    stats_before = {}
-    for col in columns:
-        if df_capped[col].dtype in ['float64', 'int64']:
-            clean_data = df_capped[col].dropna()
-            stats_before[col] = clean_data.describe()
-    
+    outlier_bounds = {}
     outlier_counts = {}
-    for col in columns:
-        if df_capped[col].dtype in ['float64', 'int64']:
+    stats_before = {}
+    
+    # Calculate statistics before capping
+    for col in numerical_cols:
+        if col in df_capped.columns:
+            clean_data = df_capped[col].dropna()
+            if len(clean_data) > 0:
+                stats_before[col] = {
+                    'count': len(clean_data),
+                    'mean': clean_data.mean(),
+                    'std': clean_data.std(),
+                    'min': clean_data.min(),
+                    '25%': clean_data.quantile(0.25),
+                    '50%': clean_data.quantile(0.50),
+                    '75%': clean_data.quantile(0.75),
+                    'max': clean_data.max(),
+                    'skewness': clean_data.skew(),
+                    'kurtosis': clean_data.kurtosis()
+                }
+    
+    # Apply IQR capping
+    for col in numerical_cols:
+        if col in df_capped.columns:
             Q1 = df_capped[col].quantile(0.25)
             Q3 = df_capped[col].quantile(0.75)
             IQR = Q3 - Q1
+            
             lower_bound = Q1 - 1.5 * IQR
             upper_bound = Q3 + 1.5 * IQR
-            outliers = df_capped[col][(df_capped[col] < lower_bound) | (df_capped[col] > upper_bound)]
-            outlier_counts[col] = len(outliers)
+            
+            # Count outliers before capping
+            outliers_below = (df_capped[col] < lower_bound).sum()
+            outliers_above = (df_capped[col] > upper_bound).sum()
+            
+            outlier_bounds[col] = {
+                'Q1': Q1,
+                'Q3': Q3,
+                'IQR': IQR,
+                'lower_bound': lower_bound,
+                'upper_bound': upper_bound
+            }
+            
+            outlier_counts[col] = {
+                'below': outliers_below,
+                'above': outliers_above,
+                'total': outliers_below + outliers_above,
+                'percentage': ((outliers_below + outliers_above) / len(df_capped[col].dropna())) * 100
+            }
+            
+            # Cap the outliers
             df_capped[col] = df_capped[col].clip(lower=lower_bound, upper=upper_bound)
     
+    # Calculate statistics after capping
     stats_after = {}
-    for col in columns:
-        if df_capped[col].dtype in ['float64', 'int64']:
+    for col in numerical_cols:
+        if col in df_capped.columns:
             clean_data = df_capped[col].dropna()
-            stats_after[col] = clean_data.describe()
+            if len(clean_data) > 0:
+                stats_after[col] = {
+                    'count': len(clean_data),
+                    'mean': clean_data.mean(),
+                    'std': clean_data.std(),
+                    'min': clean_data.min(),
+                    '25%': clean_data.quantile(0.25),
+                    '50%': clean_data.quantile(0.50),
+                    '75%': clean_data.quantile(0.75),
+                    'max': clean_data.max(),
+                    'skewness': clean_data.skew(),
+                    'kurtosis': clean_data.kurtosis()
+                }
     
-    return df_capped, stats_before, stats_after, outlier_counts
+    return df_capped, stats_before, stats_after, outlier_bounds, outlier_counts
 
-def create_outlier_summary_table(stats_before, stats_after, columns):
-    """Create summary table for outlier handling"""
+def create_outlier_summary_table(stats_before, stats_after, numerical_cols):
+    """Create summary table comparing before/after outlier handling"""
     summary_data = []
-    for col in columns:
+    for col in numerical_cols:
         if col in stats_before and col in stats_after:
             summary_data.append({
                 'Column': col,
-                'Before Mean': f"{stats_before[col]['mean']:.4f}",
-                'After Mean': f"{stats_after[col]['mean']:.4f}",
-                'Before Std': f"{stats_before[col]['std']:.4f}",
-                'After Std': f"{stats_after[col]['std']:.4f}",
-                'Before Min': f"{stats_before[col]['min']:.4f}",
-                'After Min': f"{stats_after[col]['min']:.4f}",
-                'Before Max': f"{stats_before[col]['max']:.4f}",
-                'After Max': f"{stats_after[col]['max']:.4f}"
+                'Mean Before': f"{stats_before[col]['mean']:.4f}",
+                'Mean After': f"{stats_after[col]['mean']:.4f}",
+                'Std Before': f"{stats_before[col]['std']:.4f}",
+                'Std After': f"{stats_after[col]['std']:.4f}",
+                'Min Before': f"{stats_before[col]['min']:.4f}",
+                'Min After': f"{stats_after[col]['min']:.4f}",
+                'Max Before': f"{stats_before[col]['max']:.4f}",
+                'Max After': f"{stats_after[col]['max']:.4f}",
+                'Skew Before': f"{stats_before[col]['skewness']:.4f}",
+                'Skew After': f"{stats_after[col]['skewness']:.4f}"
             })
     return pd.DataFrame(summary_data)
 
@@ -327,7 +390,7 @@ def analyze_skewness(df, columns):
     """Analyze skewness of numerical columns"""
     info = []
     for col in columns:
-        if df[col].dtype in ['float64', 'int64']:
+        if col in df.columns and df[col].dtype in ['float64', 'int64']:
             s = df[col].skew()
             info.append({
                 'Column': col, 
@@ -341,7 +404,7 @@ def apply_log_transform(df, columns):
     """Apply log transformation to reduce skewness"""
     df_t = df.copy()
     for col in columns:
-        if df_t[col].dtype in ['float64', 'int64'] and abs(df_t[col].skew()) > 0.5:
+        if col in df_t.columns and df_t[col].dtype in ['float64', 'int64'] and abs(df_t[col].skew()) > 0.5:
             shift = abs(df_t[col].min()) + 1 if df_t[col].min() <= 0 else 0
             df_t[col] = np.log1p(df_t[col] + shift)
     return df_t
@@ -525,6 +588,31 @@ def create_matplotlib_distribution(data, column, title):
         return fig
     except Exception as e:
         st.error(f"Error creating matplotlib plot: {str(e)}")
+        return None
+
+def create_outlier_boxplot_comparison(df_before, df_after, column):
+    """Create before/after boxplot comparison for outlier handling"""
+    try:
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+        
+        # Before
+        clean_before = df_before[column].dropna()
+        if len(clean_before) > 0:
+            sns.boxplot(data=clean_before, color='#ffeaa7', width=0.3, ax=ax1)
+            ax1.set_title(f'{column} - Before Outlier Handling', fontsize=14, fontweight='bold')
+            ax1.set_ylabel(column, fontsize=12)
+        
+        # After
+        clean_after = df_after[column].dropna()
+        if len(clean_after) > 0:
+            sns.boxplot(data=clean_after, color='#55efc4', width=0.3, ax=ax2)
+            ax2.set_title(f'{column} - After Outlier Handling', fontsize=14, fontweight='bold')
+            ax2.set_ylabel(column, fontsize=12)
+        
+        plt.suptitle(f'Outlier Handling Comparison: {column}', fontsize=16, fontweight='bold')
+        plt.tight_layout()
+        return fig
+    except Exception as e:
         return None
 
 def main():
@@ -979,8 +1067,6 @@ def main():
                                 st.plotly_chart(fig, use_container_width=True)
                                 
                                 # Add LOWESS trendline
-                                from scipy.interpolate import make_interp_spline
-                                
                                 st.markdown("**Alternative: LOWESS Smoother**")
                                 fig2 = px.scatter(
                                     clean, 
@@ -1237,7 +1323,8 @@ def main():
                 selected_cols = st.multiselect(
                     "Select columns to scale:",
                     numerical_cols,
-                    default=numerical_cols[:5] if len(numerical_cols) > 5 else numerical_cols
+                    default=numerical_cols[:5] if len(numerical_cols) > 5 else numerical_cols,
+                    key="scale_cols"
                 )
                 
                 if selected_cols and st.button("Apply Scaling", key="scale_btn"):
@@ -1251,14 +1338,14 @@ def main():
                     st.markdown("**Preview of scaled data:**")
                     st.dataframe(df[selected_cols].head())
                     
-                    # Show scaling statistics
-                    st.markdown("**Scaling Statistics:**")
-                    stats_df = pd.DataFrame({
+                    # Show scaling effect
+                    st.markdown("**Scaling Effect (Mean and Std after scaling):**")
+                    scaled_stats = pd.DataFrame({
                         'Column': selected_cols,
-                        'Mean Before': [0] * len(selected_cols),  # After scaling
-                        'Std Before': [1] * len(selected_cols)   # After scaling
+                        'Mean (after)': df[selected_cols].mean().round(6).values,
+                        'Std (after)': df[selected_cols].std().round(6).values
                     })
-                    st.dataframe(stats_df, hide_index=True)
+                    st.dataframe(scaled_stats, hide_index=True)
         
         with p2:
             st.markdown("### 🔄 Categorical Encoding")
@@ -1273,7 +1360,8 @@ def main():
                 selected_cats = st.multiselect(
                     "Select categorical columns to encode:",
                     categorical_cols,
-                    default=categorical_cols
+                    default=categorical_cols,
+                    key="encode_cols"
                 )
                 
                 if selected_cats and st.button("Apply Encoding", key="encode_btn"):
@@ -1287,58 +1375,251 @@ def main():
                     
                     st.markdown("**Preview of encoded data:**")
                     st.dataframe(df_encoded.head())
+                    
+                    # Show new columns
+                    new_cols = [c for c in df_encoded.columns if c not in df.columns]
+                    with st.expander(f"View {len(new_cols)} new columns"):
+                        st.write(new_cols)
         
         with p3:
             st.markdown("### 🎯 Outlier Handling")
             st.markdown("""
+            **Subtask:** Identify and handle outliers in numerical columns using the IQR method.
+            
             <div class='outlier-box outlier-before'>
             <strong>📌 Method:</strong> Interquartile Range (IQR)<br>
-            <strong>Formula:</strong> Lower bound = Q1 - 1.5×IQR, Upper bound = Q3 + 1.5×IQR
+            <strong>Formula:</strong> Lower bound = Q1 - 1.5×IQR, Upper bound = Q3 + 1.5×IQR<br>
+            <strong>Strategy:</strong> Cap outliers at the upper and lower bounds
             </div>
             """, unsafe_allow_html=True)
             
-            numerical_cols = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
-            numerical_cols = [c for c in numerical_cols if 'ID' not in c and 'Sample' not in c]
+            # Define the specific numerical columns for outlier handling
+            specified_numerical_cols = ['MP_Count_per_L', 'Risk_Score', 
+                                        'Microplastic_Size_mm_midpoint', 'Density_midpoint']
             
-            if len(numerical_cols) == 0:
-                st.warning("No numerical columns for outlier detection")
+            # Check which of these columns exist in the dataframe
+            available_cols = [col for col in specified_numerical_cols if col in df.columns]
+            missing_cols = [col for col in specified_numerical_cols if col not in df.columns]
+            
+            if missing_cols:
+                st.warning(f"⚠️ Some specified columns not found in dataset: {', '.join(missing_cols)}")
+            
+            if len(available_cols) == 0:
+                st.error("❌ None of the specified numerical columns found in the dataset!")
+                st.info(f"Available numerical columns: {', '.join(df.select_dtypes(include=['float64', 'int64']).columns.tolist())}")
             else:
-                selected_cols = st.multiselect(
-                    "Select columns for outlier handling:",
-                    numerical_cols,
-                    default=numerical_cols[:5] if len(numerical_cols) > 5 else numerical_cols
-                )
+                st.markdown(f"**📊 Columns to process:** {', '.join(available_cols)}")
                 
-                if selected_cols:
-                    # Show current outliers
-                    outlier_info = detect_outliers_detailed(df, selected_cols)
-                    outlier_summary = []
-                    for col, info in outlier_info.items():
-                        outlier_summary.append({
-                            'Column': col,
-                            'Outliers': info['outlier_count'],
-                            '%': f"{info['outlier_percentage']:.1f}%",
-                            'Lower Bound': f"{info['lower_bound']:.4f}",
-                            'Upper Bound': f"{info['upper_bound']:.4f}"
-                        })
-                    
-                    if outlier_summary:
-                        st.markdown("**Current Outlier Summary:**")
-                        st.dataframe(pd.DataFrame(outlier_summary), use_container_width=True, hide_index=True)
-                    
-                    if st.button("Cap Outliers", key="outlier_btn"):
-                        df_capped, stats_before, stats_after, outlier_counts = cap_outliers_iqr_detailed(df, selected_cols)
+                # Step 1: Show current state with outliers
+                st.markdown("---")
+                st.markdown("### 📋 Step 1: Current Data with Outliers")
+                
+                # Display descriptive statistics before outlier handling
+                st.markdown("#### Descriptive Statistics (Before Outlier Handling)")
+                st.dataframe(df[available_cols].describe(), use_container_width=True)
+                
+                # Detect and show outliers
+                outlier_info = detect_outliers_detailed(df, available_cols)
+                
+                # Create outlier summary table
+                outlier_summary = []
+                for col, info in outlier_info.items():
+                    outlier_summary.append({
+                        'Column': col,
+                        'Q1': f"{info['Q1']:.4f}",
+                        'Q3': f"{info['Q3']:.4f}",
+                        'IQR': f"{info['IQR']:.4f}",
+                        'Lower Bound': f"{info['lower_bound']:.4f}",
+                        'Upper Bound': f"{info['upper_bound']:.4f}",
+                        'Outliers Found': info['outlier_count'],
+                        'Outlier %': f"{info['outlier_percentage']:.1f}%",
+                        'Below Bound': info['outliers_below'],
+                        'Above Bound': info['outliers_above']
+                    })
+                
+                st.markdown("#### Outlier Detection Summary")
+                outlier_summary_df = pd.DataFrame(outlier_summary)
+                st.dataframe(outlier_summary_df, use_container_width=True, hide_index=True)
+                
+                # Visualize outliers before handling
+                st.markdown("#### Box Plots with Outliers (Before)")
+                fig, axes = plt.subplots(1, len(available_cols), figsize=(5*len(available_cols), 5))
+                if len(available_cols) == 1:
+                    axes = [axes]
+                
+                for i, col in enumerate(available_cols):
+                    clean_data = df[col].dropna()
+                    sns.boxplot(data=clean_data, color='#ffeaa7', width=0.3, ax=axes[i])
+                    axes[i].set_title(f'{col}', fontsize=12, fontweight='bold')
+                    axes[i].set_ylabel(col, fontsize=10)
+                    axes[i].tick_params(axis='x', rotation=45)
+                
+                plt.suptitle('Before Outlier Handling - Box Plots', fontsize=16, fontweight='bold')
+                plt.tight_layout()
+                st.pyplot(fig)
+                plt.close()
+                
+                # Step 2: Handle outliers
+                st.markdown("---")
+                st.markdown("### 🔧 Step 2: Handle Outliers")
+                
+                st.markdown("""
+                **Approach:** Using the IQR method to identify and cap outliers:
+                - Calculate Q1 (25th percentile), Q3 (75th percentile), and IQR
+                - Define bounds: Lower = Q1 - 1.5×IQR, Upper = Q3 + 1.5×IQR
+                - Cap values below lower bound and above upper bound
+                """)
+                
+                if st.button("🔧 Apply Outlier Capping", type="primary", key="outlier_btn"):
+                    with st.spinner('Capping outliers using IQR method...'):
+                        # Apply IQR capping
+                        df_capped, stats_before, stats_after, outlier_bounds, outlier_counts = cap_outliers_iqr(df, available_cols)
+                        
+                        # Store in session state
                         st.session_state.processed_data = df_capped
-                        st.session_state.outlier_columns_processed = selected_cols
+                        st.session_state.outlier_columns_processed = available_cols
                         st.session_state.outlier_stats_before = stats_before
                         st.session_state.outlier_stats_after = stats_after
+                        st.session_state.outlier_bounds = outlier_bounds
+                        st.session_state.outlier_counts = outlier_counts
                         
-                        st.success(f"✅ Successfully capped outliers in {len(selected_cols)} columns!")
+                        st.success(f"✅ Successfully capped outliers in {len(available_cols)} columns!")
                         
-                        # Show comparison
-                        st.markdown("**Before vs After Comparison:**")
-                        comp_table = create_outlier_summary_table(stats_before, stats_after, selected_cols)
-                        st.dataframe(comp_table, use_container_width=True, hide_index=True)
+                        # Show IQR bounds used
+                        st.markdown("#### IQR Bounds Applied")
+                        bounds_data = []
+                        for col, bounds in outlier_bounds.items():
+                            bounds_data.append({
+                                'Column': col,
+                                'Q1': f"{bounds['Q1']:.4f}",
+                                'Q3': f"{bounds['Q3']:.4f}",
+                                'IQR': f"{bounds['IQR']:.4f}",
+                                'Lower Bound': f"{bounds['lower_bound']:.4f}",
+                                'Upper Bound': f"{bounds['upper_bound']:.4f}"
+                            })
+                        st.dataframe(pd.DataFrame(bounds_data), use_container_width=True, hide_index=True)
+                        
+                        # Show outlier counts
+                        st.markdown("#### Outliers Capped")
+                        counts_data = []
+                        for col, counts in outlier_counts.items():
+                            counts_data.append({
+                                'Column': col,
+                                'Below Bound': counts['below'],
+                                'Above Bound': counts['above'],
+                                'Total Capped': counts['total'],
+                                '% of Data': f"{counts['percentage']:.2f}%"
+                            })
+                        st.dataframe(pd.DataFrame(counts_data), use_container_width=True, hide_index=True)
+                        
+                        # Step 3: Show results after outlier handling
+                        st.markdown("---")
+                        st.markdown("### 📊 Step 3: Results After Outlier Handling")
+                        
+                        # Display descriptive statistics after outlier handling
+                        st.markdown("#### Descriptive Statistics (After Outlier Handling)")
+                        st.dataframe(df_capped[available_cols].describe(), use_container_width=True)
+                        
+                        # Before vs After comparison table
+                        st.markdown("#### Before vs After Comparison")
+                        comparison_table = create_outlier_summary_table(stats_before, stats_after, available_cols)
+                        st.dataframe(comparison_table, use_container_width=True, hide_index=True)
+                        
+                        # Visual comparison
+                        st.markdown("#### Visual Comparison (Before vs After)")
+                        
+                        for col in available_cols:
+                            st.markdown(f"**{col}**")
+                            fig = create_outlier_boxplot_comparison(df, df_capped, col)
+                            if fig:
+                                st.pyplot(fig)
+                                plt.close()
+                            else:
+                                st.warning(f"Could not create comparison plot for {col}")
+                        
+                        # Side-by-side distribution comparison
+                        st.markdown("#### Distribution Comparison")
+                        
+                        for col in available_cols:
+                            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+                            
+                            # Before
+                            clean_before = df[col].dropna()
+                            sns.histplot(data=clean_before, kde=True, bins=30, 
+                                       color='#ffeaa7', edgecolor='white', alpha=0.7, ax=ax1)
+                            ax1.set_title(f'{col} - Before', fontsize=14, fontweight='bold')
+                            ax1.set_xlabel(col)
+                            ax1.set_ylabel('Frequency')
+                            ax1.axvline(clean_before.mean(), color='red', linestyle='--', label=f'Mean: {clean_before.mean():.2f}')
+                            ax1.legend()
+                            
+                            # After
+                            clean_after = df_capped[col].dropna()
+                            sns.histplot(data=clean_after, kde=True, bins=30, 
+                                       color='#55efc4', edgecolor='white', alpha=0.7, ax=ax2)
+                            ax2.set_title(f'{col} - After', fontsize=14, fontweight='bold')
+                            ax2.set_xlabel(col)
+                            ax2.set_ylabel('Frequency')
+                            ax2.axvline(clean_after.mean(), color='red', linestyle='--', label=f'Mean: {clean_after.mean():.2f}')
+                            ax2.legend()
+                            
+                            plt.suptitle(f'Distribution Comparison: {col}', fontsize=16, fontweight='bold')
+                            plt.tight_layout()
+                            st.pyplot(fig)
+                            plt.close()
+                        
+                        # Summary of changes
+                        st.markdown("#### 📈 Summary of Changes")
+                        
+                        summary_changes = []
+                        for col in available_cols:
+                            if col in stats_before and col in stats_after:
+                                mean_change = stats_after[col]['mean'] - stats_before[col]['mean']
+                                std_change = stats_after[col]['std'] - stats_before[col]['std']
+                                range_before = stats_before[col]['max'] - stats_before[col]['min']
+                                range_after = stats_after[col]['max'] - stats_after[col]['min']
+                                range_reduction = ((range_before - range_after) / range_before) * 100
+                                
+                                summary_changes.append({
+                                    'Column': col,
+                                    'Mean Change': f"{mean_change:+.4f}",
+                                    'Std Reduction': f"{-std_change:.4f}" if std_change < 0 else f"{std_change:.4f}",
+                                    'Range Reduction %': f"{range_reduction:.1f}%",
+                                    'Outliers Removed': f"{outlier_counts[col]['total']}"
+                                })
+                        
+                        st.dataframe(pd.DataFrame(summary_changes), use_container_width=True, hide_index=True)
+                        
+                        # Download options
+                        st.markdown("---")
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            csv_before = df[available_cols].describe().to_csv()
+                            st.download_button(
+                                "📥 Download Stats (Before)",
+                                data=csv_before,
+                                file_name="outlier_stats_before.csv",
+                                mime="text/csv"
+                            )
+                        with col2:
+                            csv_after = df_capped[available_cols].describe().to_csv()
+                            st.download_button(
+                                "📥 Download Stats (After)",
+                                data=csv_after,
+                                file_name="outlier_stats_after.csv",
+                                mime="text/csv"
+                            )
+                        with col3:
+                            csv_comparison = comparison_table.to_csv(index=False)
+                            st.download_button(
+                                "📥 Download Comparison",
+                                data=csv_comparison,
+                                file_name="outlier_comparison.csv",
+                                mime="text/csv"
+                            )
+                    
+                    # Store the processed dataframe for subsequent preprocessing steps
+                    st.session_state.processed_data = df_capped
         
         with p4:
             st.markdown("### 📊 Skewness Analysis & Log Transform")
@@ -1366,7 +1647,8 @@ def main():
                     selected_skewed = st.multiselect(
                         "Select columns for log transform:",
                         skewed_cols,
-                        default=skewed_cols[:5] if len(skewed_cols) > 5 else skewed_cols
+                        default=skewed_cols[:5] if len(skewed_cols) > 5 else skewed_cols,
+                        key="skew_cols"
                     )
                     
                     if selected_skewed and st.button("Apply Log Transform", key="log_btn"):
@@ -1374,14 +1656,35 @@ def main():
                         st.session_state.processed_data = df_transformed
                         
                         # Show comparison
-                        skew_after = pd.DataFrame({
+                        skew_before = df[selected_skewed].skew().values
+                        skew_after = df_transformed[selected_skewed].skew().values
+                        
+                        skew_comparison = pd.DataFrame({
                             'Column': selected_skewed,
-                            'Skewness Before': df[selected_skewed].skew().values,
-                            'Skewness After': df_transformed[selected_skewed].skew().values
+                            'Skewness Before': skew_before,
+                            'Skewness After': skew_after,
+                            'Reduction': skew_before - skew_after
                         }).round(4)
                         
                         st.markdown("**Skewness Comparison:**")
-                        st.dataframe(skew_after, use_container_width=True, hide_index=True)
+                        st.dataframe(skew_comparison, use_container_width=True, hide_index=True)
+                        
+                        # Visualize transformation
+                        for col in selected_skewed[:3]:  # Show first 3
+                            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+                            
+                            sns.histplot(df[col].dropna(), kde=True, bins=30, 
+                                       color='#ffeaa7', ax=ax1)
+                            ax1.set_title(f'{col} - Before Log Transform\nSkewness: {df[col].skew():.4f}')
+                            
+                            sns.histplot(df_transformed[col].dropna(), kde=True, bins=30, 
+                                       color='#55efc4', ax=ax2)
+                            ax2.set_title(f'{col} - After Log Transform\nSkewness: {df_transformed[col].skew():.4f}')
+                            
+                            plt.tight_layout()
+                            st.pyplot(fig)
+                            plt.close()
+                        
                         st.success("✅ Log transform applied!")
         
         with p5:
@@ -1393,30 +1696,47 @@ def main():
                 summary_items.append({
                     'Step': 'Feature Scaling',
                     'Status': '✅',
-                    'Details': f"Scaled {len(st.session_state.scaled_columns)} columns"
+                    'Details': f"Scaled {len(st.session_state.scaled_columns)} columns: {', '.join(st.session_state.scaled_columns[:3])}..."
                 })
             
             if st.session_state.get('encoded_data') is not None:
                 summary_items.append({
                     'Step': 'Categorical Encoding',
                     'Status': '✅',
-                    'Details': f"Shape: {st.session_state.encoded_shape}"
+                    'Details': f"Original shape: {st.session_state.data.shape}, Encoded shape: {st.session_state.encoded_shape}"
                 })
             
             if len(st.session_state.get('outlier_columns_processed', [])) > 0:
+                total_outliers = sum(st.session_state.get('outlier_counts', {}).get(col, {}).get('total', 0) 
+                                   for col in st.session_state.outlier_columns_processed)
                 summary_items.append({
-                    'Step': 'Outlier Handling',
+                    'Step': 'Outlier Handling (IQR Capping)',
                     'Status': '✅',
-                    'Details': f"Processed {len(st.session_state.outlier_columns_processed)} columns"
+                    'Details': f"Processed {len(st.session_state.outlier_columns_processed)} columns, capped {total_outliers} outliers"
                 })
             
             if summary_items:
+                st.markdown("#### Completed Preprocessing Steps")
                 st.dataframe(pd.DataFrame(summary_items), use_container_width=True, hide_index=True)
                 
                 current_data = st.session_state.processed_data if st.session_state.processed_data is not None else df
-                st.metric("Current Data Shape", f"{current_data.shape[0]} rows × {current_data.shape[1]} columns")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Current Data Shape", f"{current_data.shape[0]:,} rows")
+                with col2:
+                    st.metric("Features", f"{current_data.shape[1]} columns")
+                
+                # Download processed data
+                csv = current_data.to_csv(index=False)
+                st.download_button(
+                    "📥 Download Processed Data",
+                    data=csv,
+                    file_name="processed_microplastic_data.csv",
+                    mime="text/csv"
+                )
             else:
-                st.info("No preprocessing steps applied yet.")
+                st.info("No preprocessing steps applied yet. Use the tabs above to preprocess your data.")
     
     # ==================== FEATURE SELECTION PAGE ====================
     elif section == "🛠️ Feature Selection & Relevance":
@@ -1547,6 +1867,14 @@ def main():
                                 use_container_width=True,
                                 hide_index=True
                             )
+                            
+                            fig = px.bar(
+                                x=mi_scores.head(20).index, 
+                                y=mi_scores.head(20).values,
+                                title='Top 20 Features - Mutual Information',
+                                labels={'x': 'Feature', 'y': 'Mutual Information Score'}
+                            )
+                            st.plotly_chart(fig, use_container_width=True)
                         
                         with ft2:
                             st.markdown("**Top 20 Features - Chi-squared:**")
@@ -1569,6 +1897,14 @@ def main():
                                 use_container_width=True,
                                 hide_index=True
                             )
+                            
+                            fig = px.bar(
+                                x=rf_scores.head(20).index,
+                                y=rf_scores.head(20).values,
+                                title='Top 20 Features - Random Forest Importance',
+                                labels={'x': 'Feature', 'y': 'Importance'}
+                            )
+                            st.plotly_chart(fig, use_container_width=True)
                         
                         st.success(f"✅ Feature selection completed! Top 10 features selected for modeling.")
                         
@@ -1688,6 +2024,15 @@ def main():
                             best_model = results_df.iloc[results_df['F1 Score'].astype(float).idxmax()]
                             st.success(f"🏆 Best Model: **{best_model['Model']}** with F1 Score: {best_model['F1 Score']}")
                             
+                            # Performance visualization
+                            fig = px.bar(
+                                results_df.melt(id_vars='Model', var_name='Metric', value_name='Score'),
+                                x='Model', y='Score', color='Metric',
+                                barmode='group', height=400,
+                                title='Model Performance Comparison'
+                            )
+                            st.plotly_chart(fig, use_container_width=True)
+                            
                             # Feature importance for Random Forest
                             if 'Random Forest' in models:
                                 st.markdown("### 🌲 Random Forest Feature Importance")
@@ -1746,7 +2091,8 @@ def main():
                         fig = px.bar(
                             results_df.melt(id_vars='Model', var_name='Metric', value_name='Score'),
                             x='Model', y='Score', color='Metric',
-                            barmode='group', height=400
+                            barmode='group', height=400,
+                            title='Model Performance on Risk_Type'
                         )
                         st.plotly_chart(fig, use_container_width=True)
         
@@ -1780,14 +2126,15 @@ def main():
             target = st.selectbox(
                 "Target for CV", 
                 df.columns.tolist(),
-                index=df.columns.tolist().index('Risk_Type') if 'Risk_Type' in df.columns else 0
+                index=df.columns.tolist().index('Risk_Type') if 'Risk_Type' in df.columns else 0,
+                key="cv_target"
             )
             
             numerical_cols = df.select_dtypes(include=['float64', 'int64', 'int32']).columns.tolist()
             if target in numerical_cols:
                 numerical_cols.remove(target)
             
-            folds = st.slider("Number of CV Folds", 3, 10, 5)
+            folds = st.slider("Number of CV Folds", 3, 10, 5, key="cv_folds")
             
             if st.button("🔄 Run Cross Validation", type="primary", key="cv"):
                 with st.spinner('Running cross validation...'):
@@ -1835,6 +2182,15 @@ def main():
                             best_model = cv_df.iloc[cv_df['Mean F1'].astype(float).idxmax()]
                             st.success(f"🏆 Best Model: **{best_model['Model']}** (F1: {best_model['Mean F1']})")
                             
+                            # Visualize CV results
+                            fig = px.bar(
+                                cv_df.melt(id_vars='Model', value_vars=['Mean Accuracy', 'Mean F1']),
+                                x='Model', y='value', color='variable',
+                                barmode='group', height=400,
+                                title='Cross Validation Results'
+                            )
+                            st.plotly_chart(fig, use_container_width=True)
+                            
                             st.session_state.cv_ran = True
                     
                     except Exception as e:
@@ -1868,16 +2224,17 @@ def main():
                     },
                     {
                         'Stage': '2. Preprocessing',
-                        'Step': 'Outlier Handling',
+                        'Step': 'Outlier Handling (IQR)',
                         'Status': '✅' if len(st.session_state.get('outlier_columns_processed', [])) > 0 else '⬜',
-                        'Details': f"Processed {len(st.session_state.get('outlier_columns_processed', []))} columns"
+                        'Details': f"Processed {len(st.session_state.get('outlier_columns_processed', []))} columns: {', '.join(st.session_state.get('outlier_columns_processed', []))}"
                                   if len(st.session_state.get('outlier_columns_processed', [])) > 0 else 'Not applied'
                     },
                     {
                         'Stage': '3. Feature Selection',
                         'Step': 'Feature Importance',
                         'Status': '✅' if st.session_state.get('feature_importance') is not None else '⬜',
-                        'Details': 'Computed' if st.session_state.get('feature_importance') is not None else 'Not computed'
+                        'Details': f"Top features: {', '.join(st.session_state.get('selected_features', [])[:5])}..." 
+                                  if st.session_state.get('selected_features') else 'Not computed'
                     },
                     {
                         'Stage': '4. Modeling',
@@ -1890,6 +2247,12 @@ def main():
                         'Step': 'Model Evaluation',
                         'Status': '✅' if st.session_state.get('evaluation_ran') else '⬜',
                         'Details': 'Completed' if st.session_state.get('evaluation_ran') else 'Not done'
+                    },
+                    {
+                        'Stage': '5. Evaluation',
+                        'Step': 'Cross Validation',
+                        'Status': '✅' if st.session_state.get('cv_ran') else '⬜',
+                        'Details': 'Completed' if st.session_state.get('cv_ran') else 'Not done'
                     }
                 ]
                 
