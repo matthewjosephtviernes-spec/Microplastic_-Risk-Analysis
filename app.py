@@ -167,7 +167,6 @@ def init_session_state():
 
 init_session_state()
 
-
 def load_dataset(uploaded_file):
     """Load dataset from uploaded file with encoding detection"""
     try:
@@ -1310,43 +1309,136 @@ def main():
             "📋 Summary"
         ])
         
+        # ==================== PREPROCESSING TAB 1: Feature Scaling ====================
         with p1:
             st.markdown("### 📏 Feature Scaling")
-            st.markdown("Scale numerical features to have mean=0 and variance=1")
+            st.markdown("""
+            **Subtask:** Apply feature scaling (Standardization) to the numerical columns.
             
-            numerical_cols = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
-            numerical_cols = [c for c in numerical_cols if 'ID' not in c and 'Sample' not in c]
+            StandardScaler transforms the data to have mean=0 and standard deviation=1.
+            This is important for many machine learning algorithms that are sensitive to feature scales.
+            """)
             
-            if len(numerical_cols) == 0:
-                st.warning("No numerical columns found for scaling")
+            # Define the specific numerical columns for scaling
+            numerical_cols = ['MP_Count_per_L', 'Risk_Score', 
+                             'Microplastic_Size_mm_midpoint', 'Density_midpoint']
+            
+            # Check which of these columns exist in the dataframe
+            available_cols = [col for col in numerical_cols if col in df.columns]
+            missing_cols = [col for col in numerical_cols if col not in df.columns]
+            
+            if missing_cols:
+                st.warning(f"⚠️ Some specified columns not found in dataset: {', '.join(missing_cols)}")
+            
+            if len(available_cols) == 0:
+                st.error("❌ None of the specified numerical columns found in the dataset!")
+                st.info(f"Available numerical columns: {', '.join(df.select_dtypes(include=['float64', 'int64']).columns.tolist())}")
             else:
-                selected_cols = st.multiselect(
-                    "Select columns to scale:",
-                    numerical_cols,
-                    default=numerical_cols[:5] if len(numerical_cols) > 5 else numerical_cols,
-                    key="scale_cols"
-                )
+                st.markdown(f"**📊 Columns to scale:** {', '.join(available_cols)}")
                 
-                if selected_cols and st.button("Apply Scaling", key="scale_btn"):
-                    scaler = StandardScaler()
-                    df[selected_cols] = scaler.fit_transform(df[selected_cols])
-                    st.session_state.processed_data = df
-                    st.session_state.scaler = scaler
-                    st.session_state.scaled_columns = selected_cols
-                    st.success(f"✅ Successfully scaled {len(selected_cols)} columns!")
-                    
-                    st.markdown("**Preview of scaled data:**")
-                    st.dataframe(df[selected_cols].head())
-                    
-                    # Show scaling effect
-                    st.markdown("**Scaling Effect (Mean and Std after scaling):**")
-                    scaled_stats = pd.DataFrame({
-                        'Column': selected_cols,
-                        'Mean (after)': df[selected_cols].mean().round(6).values,
-                        'Std (after)': df[selected_cols].std().round(6).values
-                    })
-                    st.dataframe(scaled_stats, hide_index=True)
+                # Show data before scaling
+                st.markdown("---")
+                st.markdown("### 📋 Data Before Scaling")
+                st.markdown("**First 5 rows of original numerical data:**")
+                st.dataframe(df[available_cols].head(), use_container_width=True)
+                
+                # Show statistics before scaling
+                st.markdown("**Descriptive Statistics (Before Scaling):**")
+                st.dataframe(df[available_cols].describe(), use_container_width=True)
+                
+                st.markdown("---")
+                
+                # Apply StandardScaler
+                st.markdown("### 🔧 Apply StandardScaler")
+                st.markdown("""
+                **StandardScaler Formula:** 
+                - z = (x - μ) / σ
+                - where μ is the mean and σ is the standard deviation
+                
+                After scaling:
+                - Mean ≈ 0
+                - Standard Deviation ≈ 1
+                """)
+                
+                if st.button("📏 Apply StandardScaler", type="primary", key="scale_btn"):
+                    with st.spinner('Applying StandardScaler...'):
+                        # Instantiate the scaler
+                        scaler = StandardScaler()
+                        
+                        # Fit and transform the numerical data
+                        df[available_cols] = scaler.fit_transform(df[available_cols])
+                        
+                        # Store in session state
+                        st.session_state.processed_data = df
+                        st.session_state.scaler = scaler
+                        st.session_state.scaled_columns = available_cols
+                        
+                        st.success(f"✅ Successfully scaled {len(available_cols)} columns!")
+                        
+                        # Display the first few rows of the scaled numerical data
+                        st.markdown("---")
+                        st.markdown("### 📊 Scaled Data Results")
+                        
+                        st.markdown("**First 5 rows of scaled numerical data:**")
+                        st.dataframe(df[available_cols].head(), use_container_width=True)
+                        
+                        # Show statistics after scaling
+                        st.markdown("**Descriptive Statistics (After Scaling):**")
+                        st.dataframe(df[available_cols].describe(), use_container_width=True)
+                        
+                        # Show scaling parameters
+                        st.markdown("**Scaling Parameters:**")
+                        scaling_params = pd.DataFrame({
+                            'Column': available_cols,
+                            'Mean (μ)': scaler.mean_.round(6),
+                            'Std (σ)': scaler.scale_.round(6)
+                        })
+                        st.dataframe(scaling_params, use_container_width=True, hide_index=True)
+                        
+                        # Visualize before and after
+                        st.markdown("---")
+                        st.markdown("### 📈 Visual Comparison")
+                        
+                        # Get original data for comparison
+                        original_df = st.session_state.data.copy()
+                        
+                        for col in available_cols[:2]:  # Show first 2 columns
+                            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+                            
+                            # Before
+                            original_clean = original_df[col].dropna()
+                            sns.histplot(data=original_clean, kde=True, bins=30, 
+                                       color='#3498db', edgecolor='white', alpha=0.7, ax=ax1)
+                            ax1.set_title(f'{col} - Before Scaling\nMean: {original_clean.mean():.4f}, Std: {original_clean.std():.4f}', 
+                                        fontsize=12)
+                            ax1.set_xlabel(col)
+                            ax1.set_ylabel('Frequency')
+                            
+                            # After
+                            scaled_clean = df[col].dropna()
+                            sns.histplot(data=scaled_clean, kde=True, bins=30, 
+                                       color='#2ecc71', edgecolor='white', alpha=0.7, ax=ax2)
+                            ax2.set_title(f'{col} - After Scaling\nMean: {scaled_clean.mean():.4f}, Std: {scaled_clean.std():.4f}', 
+                                        fontsize=12)
+                            ax2.set_xlabel(col)
+                            ax2.set_ylabel('Frequency')
+                            
+                            plt.suptitle(f'Feature Scaling Comparison: {col}', fontsize=14, fontweight='bold')
+                            plt.tight_layout()
+                            st.pyplot(fig)
+                            plt.close()
+                        
+                        # Download scaled data
+                        st.markdown("---")
+                        csv_scaled = df[available_cols].to_csv(index=False)
+                        st.download_button(
+                            label="📥 Download Scaled Data (CSV)",
+                            data=csv_scaled,
+                            file_name="scaled_numerical_data.csv",
+                            mime="text/csv"
+                        )
         
+        # ==================== PREPROCESSING TAB 2: Categorical Encoding ====================
         with p2:
             st.markdown("### 🔄 Categorical Encoding")
             st.markdown("Convert categorical variables to numerical using one-hot encoding")
@@ -1381,6 +1473,7 @@ def main():
                     with st.expander(f"View {len(new_cols)} new columns"):
                         st.write(new_cols)
         
+        # ==================== PREPROCESSING TAB 3: Outlier Handling ====================
         with p3:
             st.markdown("### 🎯 Outlier Handling")
             st.markdown("""
@@ -1621,6 +1714,7 @@ def main():
                     # Store the processed dataframe for subsequent preprocessing steps
                     st.session_state.processed_data = df_capped
         
+        # ==================== PREPROCESSING TAB 4: Skewness & Transform ====================
         with p4:
             st.markdown("### 📊 Skewness Analysis & Log Transform")
             st.markdown("Analyze and reduce skewness in numerical features")
@@ -1687,6 +1781,7 @@ def main():
                         
                         st.success("✅ Log transform applied!")
         
+        # ==================== PREPROCESSING TAB 5: Summary ====================
         with p5:
             st.markdown("### 📋 Preprocessing Summary")
             
@@ -1694,9 +1789,9 @@ def main():
             
             if st.session_state.get('scaled_columns') is not None:
                 summary_items.append({
-                    'Step': 'Feature Scaling',
+                    'Step': 'Feature Scaling (StandardScaler)',
                     'Status': '✅',
-                    'Details': f"Scaled {len(st.session_state.scaled_columns)} columns: {', '.join(st.session_state.scaled_columns[:3])}..."
+                    'Details': f"Scaled {len(st.session_state.scaled_columns)} columns: {', '.join(st.session_state.scaled_columns)}"
                 })
             
             if st.session_state.get('encoded_data') is not None:
@@ -1863,16 +1958,13 @@ def main():
                                 pd.DataFrame({
                                     'Feature': mi_scores.head(20).index,
                                     'Score': mi_scores.head(20).values.round(4)
-                                }),
-                                use_container_width=True,
-                                hide_index=True
+                                })
                             )
                             
                             fig = px.bar(
                                 x=mi_scores.head(20).index, 
                                 y=mi_scores.head(20).values,
-                                title='Top 20 Features - Mutual Information',
-                                labels={'x': 'Feature', 'y': 'Mutual Information Score'}
+                                title='Top 20 Features - Mutual Information'
                             )
                             st.plotly_chart(fig, use_container_width=True)
                         
@@ -1882,9 +1974,7 @@ def main():
                                 pd.DataFrame({
                                     'Feature': chi2_scores.head(20).index,
                                     'Score': chi2_scores.head(20).values.round(4)
-                                }),
-                                use_container_width=True,
-                                hide_index=True
+                                })
                             )
                         
                         with ft3:
@@ -1893,16 +1983,13 @@ def main():
                                 pd.DataFrame({
                                     'Feature': rf_scores.head(20).index,
                                     'Importance': rf_scores.head(20).values.round(4)
-                                }),
-                                use_container_width=True,
-                                hide_index=True
+                                })
                             )
                             
                             fig = px.bar(
                                 x=rf_scores.head(20).index,
                                 y=rf_scores.head(20).values,
-                                title='Top 20 Features - Random Forest Importance',
-                                labels={'x': 'Feature', 'y': 'Importance'}
+                                title='Top 20 Features - Random Forest Importance'
                             )
                             st.plotly_chart(fig, use_container_width=True)
                         
@@ -1922,7 +2009,6 @@ def main():
         
         df = data.copy()
         
-        # Model configuration
         col1, col2, col3 = st.columns(3)
         with col1:
             target = st.selectbox("Target Variable", df.columns.tolist(), key='train_target')
@@ -1936,8 +2022,6 @@ def main():
             test_size = st.slider("Test Size", 0.1, 0.5, 0.2)
             use_smote = st.checkbox("Use SMOTE", value=True)
         
-        st.markdown("---")
-        
         if st.button("🚀 Train Models", type="primary", use_container_width=True):
             if len(features) == 0: 
                 st.error("Select at least one feature!")
@@ -1946,37 +2030,28 @@ def main():
                     try:
                         X = df[features].select_dtypes(include=['float64', 'int64', 'int32'])
                         y = df[target]
-                        
-                        # Clean data
                         mask = y.notna()
                         X = X[mask]
                         y = y[mask]
-                        
                         if y.dtype == 'object':
                             y = LabelEncoder().fit_transform(y)
-                        
                         X = X.fillna(X.median())
                         
-                        # Split data
                         X_train, X_test, y_train, y_test = train_test_split(
-                            X, y, test_size=test_size, random_state=42, stratify=y if len(np.unique(y)) > 1 else None
+                            X, y, test_size=test_size, random_state=42, 
+                            stratify=y if len(np.unique(y)) > 1 else None
                         )
                         
-                        # Apply SMOTE
                         if use_smote:
                             class_counts = pd.Series(y_train).value_counts()
                             if class_counts.min() >= 2:
                                 try:
                                     smote = SMOTE(random_state=42, k_neighbors=min(5, class_counts.min()-1))
                                     X_train, y_train = smote.fit_resample(X_train, y_train)
-                                    st.success(f"✅ SMOTE applied! Training samples: {len(X_train)}")
                                 except Exception as e:
                                     st.warning(f"SMOTE failed: {str(e)}")
                         
-                        # Train models
                         models = {}
-                        
-                        # Logistic Regression
                         try:
                             lr = LogisticRegression(random_state=42, max_iter=500, class_weight='balanced', n_jobs=-1)
                             lr.fit(X_train, y_train)
@@ -1984,7 +2059,6 @@ def main():
                         except Exception as e:
                             st.warning(f"Logistic Regression failed: {str(e)}")
                         
-                        # Random Forest
                         try:
                             rf = RandomForestClassifier(n_estimators=50, random_state=42, class_weight='balanced', n_jobs=-1)
                             rf.fit(X_train, y_train)
@@ -1992,7 +2066,6 @@ def main():
                         except Exception as e:
                             st.warning(f"Random Forest failed: {str(e)}")
                         
-                        # Gradient Boosting
                         try:
                             gb = GradientBoostingClassifier(n_estimators=50, random_state=42)
                             gb.fit(X_train, y_train)
@@ -2005,7 +2078,6 @@ def main():
                             st.session_state.trained = True
                             
                             st.markdown("### 📊 Model Performance")
-                            
                             results_list = []
                             for name, model in models.items():
                                 y_pred = model.predict(X_test)
@@ -2020,20 +2092,16 @@ def main():
                             results_df = pd.DataFrame(results_list)
                             st.dataframe(results_df, use_container_width=True, hide_index=True)
                             
-                            # Best model
                             best_model = results_df.iloc[results_df['F1 Score'].astype(float).idxmax()]
                             st.success(f"🏆 Best Model: **{best_model['Model']}** with F1 Score: {best_model['F1 Score']}")
                             
-                            # Performance visualization
                             fig = px.bar(
                                 results_df.melt(id_vars='Model', var_name='Metric', value_name='Score'),
                                 x='Model', y='Score', color='Metric',
-                                barmode='group', height=400,
-                                title='Model Performance Comparison'
+                                barmode='group', height=400
                             )
                             st.plotly_chart(fig, use_container_width=True)
                             
-                            # Feature importance for Random Forest
                             if 'Random Forest' in models:
                                 st.markdown("### 🌲 Random Forest Feature Importance")
                                 importances = models['Random Forest'].feature_importances_
@@ -2042,8 +2110,7 @@ def main():
                                     'Importance': importances
                                 }).sort_values('Importance', ascending=False)
                                 
-                                fig = px.bar(feat_imp, x='Feature', y='Importance', 
-                                           title='Feature Importance (Random Forest)')
+                                fig = px.bar(feat_imp, x='Feature', y='Importance')
                                 st.plotly_chart(fig, use_container_width=True)
                     
                     except Exception as e:
@@ -2069,71 +2136,49 @@ def main():
         
         with et1:
             st.markdown("### 📊 Evaluate Models on Risk_Type")
-            
             if 'Risk_Type' not in df.columns:
                 st.error("'Risk_Type' column not found!")
-            else:
-                if st.button("🚀 Evaluate Models", type="primary", key="eval"):
-                    with st.spinner('Evaluating models...'):
-                        results, info = train_and_evaluate_detailed(df, 'Risk_Type')
-                        st.session_state.evaluation_ran = True
-                    
-                    if results:
-                        results_list = [
-                            {'Model': name, **metrics} 
-                            for name, metrics in results.items()
-                        ]
-                        results_df = pd.DataFrame(results_list)
-                        
-                        st.dataframe(results_df, use_container_width=True, hide_index=True)
-                        
-                        # Performance visualization
-                        fig = px.bar(
-                            results_df.melt(id_vars='Model', var_name='Metric', value_name='Score'),
-                            x='Model', y='Score', color='Metric',
-                            barmode='group', height=400,
-                            title='Model Performance on Risk_Type'
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
+            elif st.button("🚀 Evaluate Models", type="primary", key="eval"):
+                with st.spinner('Evaluating models...'):
+                    results, info = train_and_evaluate_detailed(df, 'Risk_Type')
+                    st.session_state.evaluation_ran = True
+                if results:
+                    results_list = [{'Model': name, **metrics} for name, metrics in results.items()]
+                    results_df = pd.DataFrame(results_list)
+                    st.dataframe(results_df, use_container_width=True, hide_index=True)
+                    fig = px.bar(
+                        results_df.melt(id_vars='Model', var_name='Metric', value_name='Score'),
+                        x='Model', y='Score', color='Metric',
+                        barmode='group', height=400
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
         
         with et2:
             st.markdown("### 📊 Compare Models on Both Risk_Type and Risk_Level")
-            
             if st.button("🚀 Compare Targets", type="primary", key="cmp"):
                 all_results = {}
-                
                 for target in ['Risk_Type', 'Risk_Level']:
                     if target in df.columns:
                         with st.spinner(f'Processing {target}...'):
                             results, _ = train_and_evaluate_detailed(df, target)
                             all_results[target] = results
-                
                 st.session_state.comparison_ran = True
-                
                 for target, results in all_results.items():
                     st.markdown(f"### Target: {target}")
                     if results:
-                        results_list = [
-                            {'Model': name, 'Accuracy': metrics['accuracy'], 'F1': metrics['f1_score']}
-                            for name, metrics in results.items()
-                        ]
+                        results_list = [{'Model': name, 'Accuracy': metrics['accuracy'], 'F1': metrics['f1_score']} 
+                                      for name, metrics in results.items()]
                         st.dataframe(pd.DataFrame(results_list), use_container_width=True, hide_index=True)
                     st.markdown("---")
         
         with et3:
             st.markdown("### 🔄 Cross Validation")
-            
-            target = st.selectbox(
-                "Target for CV", 
-                df.columns.tolist(),
-                index=df.columns.tolist().index('Risk_Type') if 'Risk_Type' in df.columns else 0,
-                key="cv_target"
-            )
-            
+            target = st.selectbox("Target for CV", df.columns.tolist(),
+                                 index=df.columns.tolist().index('Risk_Type') if 'Risk_Type' in df.columns else 0,
+                                 key="cv_target")
             numerical_cols = df.select_dtypes(include=['float64', 'int64', 'int32']).columns.tolist()
             if target in numerical_cols:
                 numerical_cols.remove(target)
-            
             folds = st.slider("Number of CV Folds", 3, 10, 5, key="cv_folds")
             
             if st.button("🔄 Run Cross Validation", type="primary", key="cv"):
@@ -2141,14 +2186,11 @@ def main():
                     try:
                         X = df[numerical_cols].copy()
                         y = df[target].copy()
-                        
                         mask = y.notna()
                         X = X[mask]
                         y = y[mask]
-                        
                         if y.dtype == 'object':
                             y = LabelEncoder().fit_transform(y)
-                        
                         X = X.fillna(X.median())
                         
                         models = {
@@ -2164,7 +2206,6 @@ def main():
                             try:
                                 acc_scores = cross_val_score(model, X, y, cv=cv, scoring='accuracy', n_jobs=-1)
                                 f1_scores = cross_val_score(model, X, y, cv=cv, scoring='f1_weighted', n_jobs=-1)
-                                
                                 cv_results.append({
                                     'Model': name,
                                     'Mean Accuracy': f"{acc_scores.mean():.4f}",
@@ -2178,19 +2219,8 @@ def main():
                         if cv_results:
                             cv_df = pd.DataFrame(cv_results)
                             st.dataframe(cv_df, use_container_width=True, hide_index=True)
-                            
                             best_model = cv_df.iloc[cv_df['Mean F1'].astype(float).idxmax()]
                             st.success(f"🏆 Best Model: **{best_model['Model']}** (F1: {best_model['Mean F1']})")
-                            
-                            # Visualize CV results
-                            fig = px.bar(
-                                cv_df.melt(id_vars='Model', value_vars=['Mean Accuracy', 'Mean F1']),
-                                x='Model', y='value', color='variable',
-                                barmode='group', height=400,
-                                title='Cross Validation Results'
-                            )
-                            st.plotly_chart(fig, use_container_width=True)
-                            
                             st.session_state.cv_ran = True
                     
                     except Exception as e:
@@ -2198,80 +2228,44 @@ def main():
         
         with et4:
             st.markdown("### 📋 Complete Pipeline Summary")
-            
             if st.button("🔄 Generate Pipeline Summary", type="primary", key="pipe"):
                 pipeline_data = [
-                    {
-                        'Stage': '1. Data Loading',
-                        'Step': 'Dataset',
-                        'Status': '✅' if st.session_state.data is not None else '❌',
-                        'Details': f"{st.session_state.data.shape[0]} rows × {st.session_state.data.shape[1]} cols" 
-                                  if st.session_state.data is not None else 'No data'
-                    },
-                    {
-                        'Stage': '2. Preprocessing',
-                        'Step': 'Feature Scaling',
-                        'Status': '✅' if st.session_state.get('scaled_columns') else '⬜',
-                        'Details': f"Scaled {len(st.session_state.get('scaled_columns', []))} columns" 
-                                  if st.session_state.get('scaled_columns') else 'Not applied'
-                    },
-                    {
-                        'Stage': '2. Preprocessing',
-                        'Step': 'Categorical Encoding',
-                        'Status': '✅' if st.session_state.get('encoded_data') is not None else '⬜',
-                        'Details': f"Shape: {st.session_state.get('encoded_shape')}" 
-                                  if st.session_state.get('encoded_data') is not None else 'Not applied'
-                    },
-                    {
-                        'Stage': '2. Preprocessing',
-                        'Step': 'Outlier Handling (IQR)',
-                        'Status': '✅' if len(st.session_state.get('outlier_columns_processed', [])) > 0 else '⬜',
-                        'Details': f"Processed {len(st.session_state.get('outlier_columns_processed', []))} columns: {', '.join(st.session_state.get('outlier_columns_processed', []))}"
-                                  if len(st.session_state.get('outlier_columns_processed', [])) > 0 else 'Not applied'
-                    },
-                    {
-                        'Stage': '3. Feature Selection',
-                        'Step': 'Feature Importance',
-                        'Status': '✅' if st.session_state.get('feature_importance') is not None else '⬜',
-                        'Details': f"Top features: {', '.join(st.session_state.get('selected_features', [])[:5])}..." 
-                                  if st.session_state.get('selected_features') else 'Not computed'
-                    },
-                    {
-                        'Stage': '4. Modeling',
-                        'Step': 'Models Trained',
-                        'Status': '✅' if st.session_state.get('trained') else '⬜',
-                        'Details': f"{len(st.session_state.get('models', {}))} models" if st.session_state.get('trained') else 'Not trained'
-                    },
-                    {
-                        'Stage': '5. Evaluation',
-                        'Step': 'Model Evaluation',
-                        'Status': '✅' if st.session_state.get('evaluation_ran') else '⬜',
-                        'Details': 'Completed' if st.session_state.get('evaluation_ran') else 'Not done'
-                    },
-                    {
-                        'Stage': '5. Evaluation',
-                        'Step': 'Cross Validation',
-                        'Status': '✅' if st.session_state.get('cv_ran') else '⬜',
-                        'Details': 'Completed' if st.session_state.get('cv_ran') else 'Not done'
-                    }
+                    {'Stage': '1. Data Loading', 'Step': 'Dataset', 
+                     'Status': '✅' if st.session_state.data is not None else '❌',
+                     'Details': f"{st.session_state.data.shape[0]} rows × {st.session_state.data.shape[1]} cols" if st.session_state.data is not None else 'No data'},
+                    {'Stage': '2. Preprocessing', 'Step': 'Feature Scaling (StandardScaler)',
+                     'Status': '✅' if st.session_state.get('scaled_columns') else '⬜',
+                     'Details': f"Scaled {len(st.session_state.get('scaled_columns', []))} columns" if st.session_state.get('scaled_columns') else 'Not applied'},
+                    {'Stage': '2. Preprocessing', 'Step': 'Categorical Encoding',
+                     'Status': '✅' if st.session_state.get('encoded_data') is not None else '⬜',
+                     'Details': f"Shape: {st.session_state.get('encoded_shape')}" if st.session_state.get('encoded_data') is not None else 'Not applied'},
+                    {'Stage': '2. Preprocessing', 'Step': 'Outlier Handling (IQR)',
+                     'Status': '✅' if len(st.session_state.get('outlier_columns_processed', [])) > 0 else '⬜',
+                     'Details': f"Processed {len(st.session_state.get('outlier_columns_processed', []))} columns" if len(st.session_state.get('outlier_columns_processed', [])) > 0 else 'Not applied'},
+                    {'Stage': '3. Feature Selection', 'Step': 'Feature Importance',
+                     'Status': '✅' if st.session_state.get('feature_importance') is not None else '⬜',
+                     'Details': f"Top features: {', '.join(st.session_state.get('selected_features', [])[:5])}..." if st.session_state.get('selected_features') else 'Not computed'},
+                    {'Stage': '4. Modeling', 'Step': 'Models Trained',
+                     'Status': '✅' if st.session_state.get('trained') else '⬜',
+                     'Details': f"{len(st.session_state.get('models', {}))} models" if st.session_state.get('trained') else 'Not trained'},
+                    {'Stage': '5. Evaluation', 'Step': 'Model Evaluation',
+                     'Status': '✅' if st.session_state.get('evaluation_ran') else '⬜',
+                     'Details': 'Completed' if st.session_state.get('evaluation_ran') else 'Not done'},
+                    {'Stage': '5. Evaluation', 'Step': 'Cross Validation',
+                     'Status': '✅' if st.session_state.get('cv_ran') else '⬜',
+                     'Details': 'Completed' if st.session_state.get('cv_ran') else 'Not done'}
                 ]
                 
                 pipeline_df = pd.DataFrame(pipeline_data)
                 st.dataframe(pipeline_df, use_container_width=True, height=400)
                 
-                # Progress
                 completed = sum(1 for d in pipeline_data if d['Status'] == '✅')
                 progress = int((completed / len(pipeline_data)) * 100)
                 st.progress(progress, text=f"Pipeline Progress: {progress}%")
                 
-                # Download report
                 csv = pipeline_df.to_csv(index=False)
-                st.download_button(
-                    "📥 Download Pipeline Report",
-                    data=csv,
-                    file_name="pipeline_summary.csv",
-                    mime="text/csv"
-                )
+                st.download_button("📥 Download Pipeline Report", data=csv, 
+                                 file_name="pipeline_summary.csv", mime="text/csv")
 
 if __name__ == "__main__":
     main()
