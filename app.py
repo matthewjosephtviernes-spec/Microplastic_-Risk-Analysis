@@ -358,37 +358,238 @@ def main():
                 })
                 st.dataframe(col_info, use_container_width=True, hide_index=True)
         
-        with home_tab2:
-            st.markdown("### 📊 Analyze the Distribution of Risk Score")
-            if st.session_state.data is None: st.warning("⚠️ Upload data first!")
+# Home Tab 2 - Enhanced Risk Score Distribution Analysis
+with home_tab2:
+    st.markdown("### 📊 Analyze the Distribution of Risk Score")
+    
+    if st.session_state.data is None: 
+        st.warning("⚠️ Upload data first!")
+    else:
+        df = st.session_state.data
+        
+        # Check if Risk_Score column exists
+        if 'Risk_Score' not in df.columns:
+            st.error("❌ 'Risk_Score' column not found in dataset!")
+        else:
+            # Convert to numeric and handle missing values
+            df['Risk_Score'] = pd.to_numeric(df['Risk_Score'], errors='coerce')
+            clean_data = df['Risk_Score'].dropna()
+            
+            if len(clean_data) == 0:
+                st.error("❌ No valid Risk_Score data found after cleaning!")
             else:
-                df = st.session_state.data
-                if 'Risk_Score' in df.columns:
-                    df['Risk_Score'] = pd.to_numeric(df['Risk_Score'], errors='coerce')
-                    clean = df['Risk_Score'].dropna()
-                    if len(clean) > 0:
-                        st.plotly_chart(plot_distribution(df, 'Risk_Score', 'Risk Score Distribution'), use_container_width=True)
-                        q1, q3 = clean.quantile(0.25), clean.quantile(0.75)
-                        c1, c2 = st.columns(2)
-                        with c1:
-                            stats_data = [
-                                ('Count', f'{len(clean):,}'), ('Mean', f'{clean.mean():.4f}'),
-                                ('Median', f'{clean.median():.4f}'), ('Std', f'{clean.std():.4f}'),
-                                ('Min', f'{clean.min():.4f}'), ('Q1', f'{q1:.4f}'),
-                                ('Q3', f'{q3:.4f}'), ('Max', f'{clean.max():.4f}'),
-                                ('Skewness', f'{clean.skew():.4f}')
-                            ]
-                            st.dataframe(pd.DataFrame(stats_data, columns=['Statistic', 'Value']), use_container_width=True, hide_index=True)
-                        with c2:
-                            cats = [
-                                ('🟢 Low (0-25)', (clean < 25).sum()),
-                                ('🟡 Med (25-50)', ((clean >= 25) & (clean < 50)).sum()),
-                                ('🟠 High (50-75)', ((clean >= 50) & (clean < 75)).sum()),
-                                ('🔴 Critical (75-100)', (clean >= 75).sum())
-                            ]
-                            for cat, cnt in cats:
-                                st.markdown(f"**{cat}**: {cnt:,} ({(cnt/len(clean))*100:.1f}%)")
-                                st.progress(int((cnt/len(clean))*100))
+                # Visualization type selector
+                viz_type = st.radio(
+                    "Select Visualization Type:",
+                    ["📊 Interactive (Plotly)", "📈 Static (Matplotlib/Seaborn)", "🔢 Both"],
+                    horizontal=True
+                )
+                
+                if viz_type in ["📊 Interactive (Plotly)", "🔢 Both"]:
+                    st.markdown("#### Interactive Visualization (Plotly)")
+                    st.plotly_chart(
+                        plot_distribution(df, 'Risk_Score', 'Risk Score Distribution'), 
+                        use_container_width=True
+                    )
+                
+                if viz_type in ["📈 Static (Matplotlib/Seaborn)", "🔢 Both"]:
+                    st.markdown("#### Static Visualization (Matplotlib/Seaborn)")
+                    
+                    # Create matplotlib/seaborn visualization
+                    import matplotlib.pyplot as plt
+                    import seaborn as sns
+                    
+                    # Set style
+                    plt.style.use('seaborn-v0_8-darkgrid')
+                    
+                    # Create figure with subplots
+                    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+                    
+                    # Histogram with KDE
+                    sns.histplot(
+                        data=clean_data, 
+                        kde=True, 
+                        bins=30, 
+                        color='#3498db',
+                        edgecolor='white',
+                        alpha=0.7,
+                        ax=ax1
+                    )
+                    ax1.set_title('Distribution of Risk Score', fontsize=14, fontweight='bold')
+                    ax1.set_xlabel('Risk Score', fontsize=12)
+                    ax1.set_ylabel('Frequency', fontsize=12)
+                    
+                    # Add mean and median lines
+                    mean_val = clean_data.mean()
+                    median_val = clean_data.median()
+                    ax1.axvline(mean_val, color='red', linestyle='--', linewidth=2, label=f'Mean: {mean_val:.2f}')
+                    ax1.axvline(median_val, color='green', linestyle='--', linewidth=2, label=f'Median: {median_val:.2f}')
+                    ax1.legend()
+                    
+                    # Box Plot
+                    sns.boxplot(
+                        data=clean_data,
+                        color='#e74c3c',
+                        width=0.3,
+                        ax=ax2
+                    )
+                    ax2.set_title('Box Plot of Risk Score', fontsize=14, fontweight='bold')
+                    ax2.set_ylabel('Risk Score', fontsize=12)
+                    
+                    # Add statistical annotations to box plot
+                    stats_text = f"Q1: {clean_data.quantile(0.25):.2f}\nQ3: {clean_data.quantile(0.75):.2f}\nIQR: {clean_data.quantile(0.75) - clean_data.quantile(0.25):.2f}"
+                    ax2.text(1.15, clean_data.median(), stats_text, 
+                            bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray", alpha=0.8),
+                            fontsize=10)
+                    
+                    plt.tight_layout()
+                    st.pyplot(fig)
+                    plt.close()
+                
+                st.markdown("---")
+                
+                # Comprehensive Statistics Section
+                st.markdown("#### 📈 Descriptive Statistics")
+                
+                # Calculate statistics
+                stats_dict = {
+                    'Count': len(clean_data),
+                    'Mean': clean_data.mean(),
+                    'Median': clean_data.median(),
+                    'Std Dev': clean_data.std(),
+                    'Variance': clean_data.var(),
+                    'Skewness': clean_data.skew(),
+                    'Kurtosis': clean_data.kurtosis(),
+                    'Min': clean_data.min(),
+                    '25th Percentile (Q1)': clean_data.quantile(0.25),
+                    '50th Percentile (Q2)': clean_data.quantile(0.50),
+                    '75th Percentile (Q3)': clean_data.quantile(0.75),
+                    'Max': clean_data.max(),
+                    'IQR': clean_data.quantile(0.75) - clean_data.quantile(0.25),
+                    'Range': clean_data.max() - clean_data.min()
+                }
+                
+                # Display statistics in columns
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.metric("📊 Count", f"{stats_dict['Count']:,}")
+                    st.metric("📈 Mean", f"{stats_dict['Mean']:.4f}")
+                    st.metric("📐 Median", f"{stats_dict['Median']:.4f}")
+                    st.metric("📏 Std Dev", f"{stats_dict['Std Dev']:.4f}")
+                    st.metric("📊 Variance", f"{stats_dict['Variance']:.4f}")
+                
+                with col2:
+                    st.metric("↗️ Skewness", f"{stats_dict['Skewness']:.4f}")
+                    st.metric("⛰️ Kurtosis", f"{stats_dict['Kurtosis']:.4f}")
+                    st.metric("⬇️ Min", f"{stats_dict['Min']:.4f}")
+                    st.metric("Q1", f"{stats_dict['25th Percentile (Q1)']:.4f}")
+                    st.metric("Q2", f"{stats_dict['50th Percentile (Q2)']:.4f}")
+                
+                with col3:
+                    st.metric("Q3", f"{stats_dict['75th Percentile (Q3)']:.4f}")
+                    st.metric("⬆️ Max", f"{stats_dict['Max']:.4f}")
+                    st.metric("📏 IQR", f"{stats_dict['IQR']:.4f}")
+                    st.metric("↔️ Range", f"{stats_dict['Range']:.4f}")
+                
+                st.markdown("---")
+                
+                # Risk Level Distribution
+                st.markdown("#### 🎯 Risk Score Categories Distribution")
+                
+                # Define risk categories
+                def categorize_risk(score):
+                    if score < 25:
+                        return '🟢 Low Risk (0-25)'
+                    elif score < 50:
+                        return '🟡 Medium Risk (25-50)'
+                    elif score < 75:
+                        return '🟠 High Risk (50-75)'
+                    else:
+                        return '🔴 Critical Risk (75-100)'
+                
+                risk_categories = clean_data.apply(categorize_risk)
+                category_counts = risk_categories.value_counts()
+                
+                # Create category distribution dataframe
+                cat_df = pd.DataFrame({
+                    'Category': category_counts.index,
+                    'Count': category_counts.values,
+                    'Percentage': (category_counts.values / len(clean_data) * 100).round(2)
+                })
+                
+                # Display category distribution
+                for _, row in cat_df.iterrows():
+                    col1, col2, col3 = st.columns([3, 1, 1])
+                    with col1:
+                        st.markdown(f"**{row['Category']}**")
+                        st.progress(int(row['Percentage']))
+                    with col2:
+                        st.metric("Count", f"{row['Count']:,}")
+                    with col3:
+                        st.metric("%", f"{row['Percentage']:.1f}%")
+                
+                st.markdown("---")
+                
+                # Outlier Detection
+                st.markdown("#### 🔍 Outlier Analysis")
+                
+                Q1 = clean_data.quantile(0.25)
+                Q3 = clean_data.quantile(0.75)
+                IQR = Q3 - Q1
+                lower_bound = Q1 - 1.5 * IQR
+                upper_bound = Q3 + 1.5 * IQR
+                
+                outliers = clean_data[(clean_data < lower_bound) | (clean_data > upper_bound)]
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Lower Bound (Q1 - 1.5×IQR)", f"{lower_bound:.4f}")
+                    st.metric("Upper Bound (Q3 + 1.5×IQR)", f"{upper_bound:.4f}")
+                
+                with col2:
+                    st.metric("Number of Outliers", len(outliers))
+                    st.metric("Outlier Percentage", f"{(len(outliers)/len(clean_data)*100):.2f}%")
+                
+                if len(outliers) > 0:
+                    with st.expander("View Outlier Details"):
+                        outlier_df = pd.DataFrame({
+                            'Index': outliers.index,
+                            'Risk Score': outliers.values
+                        })
+                        st.dataframe(outlier_df.head(20), use_container_width=True)
+                
+                st.markdown("---")
+                
+                # Distribution Shape Analysis
+                st.markdown("#### 📊 Distribution Shape Analysis")
+                
+                skewness = clean_data.skew()
+                if abs(skewness) < 0.5:
+                    shape = "Approximately Symmetric"
+                    interpretation = "The distribution is roughly symmetric, suggesting balanced risk scores."
+                elif skewness > 0.5:
+                    shape = "Right-Skewed (Positive Skew)"
+                    interpretation = "The distribution has a longer right tail, indicating more samples with higher risk scores."
+                else:
+                    shape = "Left-Skewed (Negative Skew)"
+                    interpretation = "The distribution has a longer left tail, indicating more samples with lower risk scores."
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.info(f"**Distribution Shape:** {shape}")
+                with col2:
+                    st.success(f"**Interpretation:** {interpretation}")
+                
+                # Add download option for statistics
+                stats_export = pd.DataFrame(list(stats_dict.items()), columns=['Statistic', 'Value'])
+                csv = stats_export.to_csv(index=False)
+                st.download_button(
+                    label="📥 Download Statistics",
+                    data=csv,
+                    file_name="risk_score_statistics.csv",
+                    mime="text/csv"
+                )
         
         with home_tab3:
             st.markdown("### 🔬 Explore the Relationship Between Risk Score and MP Count per L")
