@@ -2172,21 +2172,25 @@ def main():
                     st.markdown(f"**{cat}:** {count:,} ({pct:.1f}%)")
                     st.progress(int(pct))
         else:
+        else:
             # Numerical target - show histogram
-            clean_target = df[target].dropna()
+            clean_target = pd.to_numeric(df[target], errors='coerce').dropna()
             if len(clean_target) > 0:
                 fig = plot_distribution(df, target, f'Distribution of {target}')
                 st.plotly_chart(fig, use_container_width=True)
                 
-                col1, col2, col3, col4 = st.columns(4)
-                with col1:
-                    st.metric("Mean", f"{clean_target.mean():.4f}")
-                with col2:
-                    st.metric("Median", f"{clean_target.median():.4f}")
-                with col3:
-                    st.metric("Std Dev", f"{clean_target.std():.4f}")
-                with col4:
-                    st.metric("Skewness", f"{clean_target.skew():.4f}")
+                try:
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("Mean", f"{clean_target.mean():.4f}")
+                    with col2:
+                        st.metric("Median", f"{clean_target.median():.4f}")
+                    with col3:
+                        st.metric("Std Dev", f"{clean_target.std():.4f}")
+                    with col4:
+                        st.metric("Skewness", f"{clean_target.skew():.4f}")
+                except:
+                    st.warning("Could not calculate statistics for this target.")
         
         st.markdown("---")
         
