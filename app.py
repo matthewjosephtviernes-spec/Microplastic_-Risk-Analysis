@@ -167,7 +167,7 @@ def init_session_state():
 
 init_session_state()
 
-@st.cache_data
+
 def load_dataset(uploaded_file):
     """Load dataset from uploaded file with encoding detection"""
     try:
