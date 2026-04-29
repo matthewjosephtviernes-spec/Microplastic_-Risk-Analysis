@@ -10,6 +10,8 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import matplotlib.pyplot as plt
+import seaborn as sns
 from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score, StratifiedKFold
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler
 from sklearn.linear_model import LogisticRegression, LinearRegression
@@ -22,48 +24,141 @@ from imblearn.over_sampling import SMOTE
 from scipy import stats
 import warnings
 import time
+import io
+import base64
 
 warnings.filterwarnings('ignore')
 
-st.set_page_config(page_title="Microplastic Risk Analysis Dashboard", page_icon="🔬", layout="wide", initial_sidebar_state="expanded")
+# Page configuration
+st.set_page_config(
+    page_title="Microplastic Risk Analysis Dashboard", 
+    page_icon="🔬", 
+    layout="wide", 
+    initial_sidebar_state="expanded"
+)
 
+# Custom CSS styling
 st.markdown("""
 <style>
-    .main-header { font-size: 2.5rem; font-weight: 700; color: #1f77b4; text-align: center; margin-bottom: 2rem; }
-    .section-header { font-size: 1.8rem; font-weight: 600; color: #2c3e50; margin-top: 1rem; margin-bottom: 1rem; }
-    .stButton > button { width: 100%; background-color: #1f77b4; color: white; font-weight: 600; border-radius: 8px; padding: 0.5rem 1rem; }
-    .stButton > button:hover { background-color: #2980b9; border-color: #2980b9; }
-    .stMarkdown, .stMarkdown p, .stMarkdown li { color: #2c3e50 !important; }
-    .outlier-box { padding: 1rem; border-radius: 8px; margin: 0.5rem 0; }
-    .outlier-before { background-color: #ffeaa7; }
-    .outlier-after { background-color: #55efc4; }
+    .main-header { 
+        font-size: 2.5rem; 
+        font-weight: 700; 
+        color: #1f77b4; 
+        text-align: center; 
+        margin-bottom: 2rem; 
+        padding: 1rem;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+    .section-header { 
+        font-size: 1.8rem; 
+        font-weight: 600; 
+        color: #2c3e50; 
+        margin-top: 1rem; 
+        margin-bottom: 1rem; 
+        border-bottom: 3px solid #3498db;
+        padding-bottom: 0.5rem;
+    }
+    .subsection-header {
+        font-size: 1.4rem;
+        font-weight: 500;
+        color: #34495e;
+        margin-top: 0.8rem;
+    }
+    .stButton > button { 
+        width: 100%; 
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white; 
+        font-weight: 600; 
+        border-radius: 8px; 
+        padding: 0.5rem 1rem;
+        border: none;
+        transition: transform 0.2s;
+    }
+    .stButton > button:hover { 
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    }
+    .metric-box {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        padding: 1.5rem;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        text-align: center;
+    }
+    .outlier-box { 
+        padding: 1rem; 
+        border-radius: 8px; 
+        margin: 0.5rem 0; 
+    }
+    .outlier-before { 
+        background-color: #ffeaa7; 
+    }
+    .outlier-after { 
+        background-color: #55efc4; 
+    }
+    .info-box {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 1rem;
+        border-radius: 8px;
+        margin: 0.5rem 0;
+    }
+    .stat-card {
+        background: white;
+        padding: 1rem;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin: 0.5rem 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 def init_session_state():
     """Initialize all session state variables"""
-    if 'data' not in st.session_state: st.session_state.data = None
-    if 'processed_data' not in st.session_state: st.session_state.processed_data = None
-    if 'models' not in st.session_state: st.session_state.models = {}
-    if 'feature_importance' not in st.session_state: st.session_state.feature_importance = None
-    if 'mutual_info' not in st.session_state: st.session_state.mutual_info = None
-    if 'chi2_scores' not in st.session_state: st.session_state.chi2_scores = None
-    if 'trained' not in st.session_state: st.session_state.trained = False
-    if 'selected_features' not in st.session_state: st.session_state.selected_features = None
-    if 'scaler' not in st.session_state: st.session_state.scaler = None
-    if 'scaled_data' not in st.session_state: st.session_state.scaled_data = None
-    if 'scaled_columns' not in st.session_state: st.session_state.scaled_columns = None
-    if 'encoded_data' not in st.session_state: st.session_state.encoded_data = None
-    if 'encoded_shape' not in st.session_state: st.session_state.encoded_shape = None
-    if 'evaluation_ran' not in st.session_state: st.session_state.evaluation_ran = False
-    if 'comparison_ran' not in st.session_state: st.session_state.comparison_ran = False
-    if 'cv_ran' not in st.session_state: st.session_state.cv_ran = False
-    if 'outlier_stats_before' not in st.session_state: st.session_state.outlier_stats_before = None
-    if 'outlier_stats_after' not in st.session_state: st.session_state.outlier_stats_after = None
-    if 'outlier_columns_processed' not in st.session_state: st.session_state.outlier_columns_processed = []
+    if 'data' not in st.session_state: 
+        st.session_state.data = None
+    if 'processed_data' not in st.session_state: 
+        st.session_state.processed_data = None
+    if 'models' not in st.session_state: 
+        st.session_state.models = {}
+    if 'feature_importance' not in st.session_state: 
+        st.session_state.feature_importance = None
+    if 'mutual_info' not in st.session_state: 
+        st.session_state.mutual_info = None
+    if 'chi2_scores' not in st.session_state: 
+        st.session_state.chi2_scores = None
+    if 'trained' not in st.session_state: 
+        st.session_state.trained = False
+    if 'selected_features' not in st.session_state: 
+        st.session_state.selected_features = None
+    if 'scaler' not in st.session_state: 
+        st.session_state.scaler = None
+    if 'scaled_data' not in st.session_state: 
+        st.session_state.scaled_data = None
+    if 'scaled_columns' not in st.session_state: 
+        st.session_state.scaled_columns = None
+    if 'encoded_data' not in st.session_state: 
+        st.session_state.encoded_data = None
+    if 'encoded_shape' not in st.session_state: 
+        st.session_state.encoded_shape = None
+    if 'evaluation_ran' not in st.session_state: 
+        st.session_state.evaluation_ran = False
+    if 'comparison_ran' not in st.session_state: 
+        st.session_state.comparison_ran = False
+    if 'cv_ran' not in st.session_state: 
+        st.session_state.cv_ran = False
+    if 'outlier_stats_before' not in st.session_state: 
+        st.session_state.outlier_stats_before = None
+    if 'outlier_stats_after' not in st.session_state: 
+        st.session_state.outlier_stats_after = None
+    if 'outlier_columns_processed' not in st.session_state: 
+        st.session_state.outlier_columns_processed = []
 
 init_session_state()
 
+@st.cache_data
 def load_dataset(uploaded_file):
     """Load dataset from uploaded file with encoding detection"""
     try:
@@ -72,22 +167,28 @@ def load_dataset(uploaded_file):
                 try: 
                     uploaded_file.seek(0)
                     data = pd.read_csv(uploaded_file, encoding=enc)
-                    break
-                except: continue
+                    st.session_state.data = data
+                    return data
+                except UnicodeDecodeError: 
+                    continue
+                except Exception as e:
+                    continue
+            # If all encodings fail
+            st.error("Unable to read CSV file with common encodings")
+            return None
         elif uploaded_file.name.endswith(('.xlsx', '.xls')):
             data = pd.read_excel(uploaded_file)
+            st.session_state.data = data
+            return data
         else: 
             st.error("Unsupported file format. Please upload CSV or Excel.")
             return None
-        st.session_state.data = data
-        st.success(f"✅ Dataset loaded successfully! Shape: {data.shape[0]} rows × {data.shape[1]} columns")
-        return data
     except Exception as e: 
         st.error(f"❌ Error loading file: {str(e)}")
         return None
 
 def generate_sample_data():
-    """Generate sample microplastic dataset"""
+    """Generate sample microplastic dataset with enhanced features"""
     np.random.seed(42)
     n = 1000
     data = {
@@ -109,7 +210,8 @@ def generate_sample_data():
         'Source': np.random.choice(['Source_1','Source_2','Source_3'], n)
     }
     df = pd.DataFrame(data)
-    # Add some outliers
+    
+    # Add outliers for more realistic data
     for col in ['MP_Count_per_L', 'Risk_Score', 'Microplastic_Size_mm_midpoint', 'Density_midpoint']:
         if col in df.columns:
             outlier_indices = np.random.choice(n, size=int(n*0.05), replace=False)
@@ -122,6 +224,7 @@ def generate_sample_data():
             elif col == 'Density_midpoint':
                 df.loc[outlier_indices, col] = np.random.uniform(1.5, 2.0, len(outlier_indices))
     
+    # Add missing values
     for col in df.columns:
         if col != 'Sample_ID' and df[col].dtype in ['float64','int64']:
             df.loc[np.random.random(n) < 0.05, col] = np.nan
@@ -129,6 +232,7 @@ def generate_sample_data():
     return df
 
 def detect_outliers_detailed(df, columns):
+    """Detect outliers using IQR method with detailed statistics"""
     outlier_info = {}
     for col in columns:
         if df[col].dtype in ['float64', 'int64']:
@@ -142,24 +246,31 @@ def detect_outliers_detailed(df, columns):
             upper_bound = Q3 + 1.5 * IQR
             outliers = clean_data[(clean_data < lower_bound) | (clean_data > upper_bound)]
             outlier_info[col] = {
-                'Q1': Q1, 'Q3': Q3, 'IQR': IQR,
-                'lower_bound': lower_bound, 'upper_bound': upper_bound,
+                'Q1': Q1, 
+                'Q3': Q3, 
+                'IQR': IQR,
+                'lower_bound': lower_bound, 
+                'upper_bound': upper_bound,
                 'outlier_count': len(outliers),
                 'outlier_percentage': (len(outliers) / len(clean_data)) * 100,
-                'min_value': clean_data.min(), 'max_value': clean_data.max(),
-                'mean': clean_data.mean(), 'std': clean_data.std(),
+                'min_value': clean_data.min(), 
+                'max_value': clean_data.max(),
+                'mean': clean_data.mean(), 
+                'std': clean_data.std(),
                 'outliers_below': len(clean_data[clean_data < lower_bound]),
                 'outliers_above': len(clean_data[clean_data > upper_bound])
             }
     return outlier_info
 
 def cap_outliers_iqr_detailed(df, columns):
+    """Cap outliers using IQR method"""
     df_capped = df.copy()
     stats_before = {}
     for col in columns:
         if df_capped[col].dtype in ['float64', 'int64']:
             clean_data = df_capped[col].dropna()
             stats_before[col] = clean_data.describe()
+    
     outlier_counts = {}
     for col in columns:
         if df_capped[col].dtype in ['float64', 'int64']:
@@ -171,14 +282,17 @@ def cap_outliers_iqr_detailed(df, columns):
             outliers = df_capped[col][(df_capped[col] < lower_bound) | (df_capped[col] > upper_bound)]
             outlier_counts[col] = len(outliers)
             df_capped[col] = df_capped[col].clip(lower=lower_bound, upper=upper_bound)
+    
     stats_after = {}
     for col in columns:
         if df_capped[col].dtype in ['float64', 'int64']:
             clean_data = df_capped[col].dropna()
             stats_after[col] = clean_data.describe()
+    
     return df_capped, stats_before, stats_after, outlier_counts
 
 def create_outlier_summary_table(stats_before, stats_after, columns):
+    """Create summary table for outlier handling"""
     summary_data = []
     for col in columns:
         if col in stats_before and col in stats_after:
@@ -196,6 +310,7 @@ def create_outlier_summary_table(stats_before, stats_after, columns):
     return pd.DataFrame(summary_data)
 
 def one_hot_encode(df):
+    """One-hot encode categorical variables"""
     try:
         cats = df.select_dtypes(include=['object']).columns.tolist()
         cols = [c for c in cats if 'ID' not in c and 'Sample' not in c]
@@ -209,14 +324,21 @@ def one_hot_encode(df):
         return df, [], [], df.shape
 
 def analyze_skewness(df, columns):
+    """Analyze skewness of numerical columns"""
     info = []
     for col in columns:
         if df[col].dtype in ['float64', 'int64']:
             s = df[col].skew()
-            info.append({'Column': col, 'Skewness': round(s, 4), 'Skewed': 'Yes' if abs(s) > 0.5 else 'No'})
+            info.append({
+                'Column': col, 
+                'Skewness': round(s, 4), 
+                'Skewed': 'Yes' if abs(s) > 0.5 else 'No',
+                'Direction': 'Right' if s > 0.5 else ('Left' if s < -0.5 else 'Symmetric')
+            })
     return pd.DataFrame(info)
 
 def apply_log_transform(df, columns):
+    """Apply log transformation to reduce skewness"""
     df_t = df.copy()
     for col in columns:
         if df_t[col].dtype in ['float64', 'int64'] and abs(df_t[col].skew()) > 0.5:
@@ -224,50 +346,81 @@ def apply_log_transform(df, columns):
             df_t[col] = np.log1p(df_t[col] + shift)
     return df_t
 
+@st.cache_data
 def calculate_mutual_info(X, y):
+    """Calculate mutual information scores"""
     scores = mutual_info_classif(X, y, random_state=42)
-    return pd.DataFrame({'Feature': X.columns, 'Mutual_Info': scores}).sort_values('Mutual_Info', ascending=False)
+    return pd.Series(scores, index=X.columns).sort_values(ascending=False)
 
+@st.cache_data
 def calculate_chi2(X, y):
+    """Calculate chi-squared scores"""
     X_s = X - X.min() + 1
     scores, pvals = chi2(X_s, y)
-    return pd.DataFrame({'Feature': X.columns, 'Chi2_Score': scores, 'P_Value': pvals}).sort_values('Chi2_Score', ascending=False)
+    return pd.Series(scores, index=X.columns).sort_values(ascending=False)
 
+@st.cache_data
 def calculate_rf_importance(X, y):
+    """Calculate Random Forest feature importance"""
     rf = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
     rf.fit(X, y)
-    return pd.DataFrame({'Feature': X.columns, 'Importance': rf.feature_importances_}).sort_values('Importance', ascending=False)
+    return pd.Series(rf.feature_importances_, index=X.columns).sort_values(ascending=False)
 
 def train_and_evaluate_detailed(df, target_col):
+    """Train and evaluate multiple models"""
     feature_cols = df.select_dtypes(include=['float64','int64','int32']).columns.tolist()
     if target_col in feature_cols: 
         feature_cols.remove(target_col)
+    
+    if len(feature_cols) == 0:
+        st.error("No numerical features found for training")
+        return None, None
+    
     X = df[feature_cols].copy()
     y = df[target_col].copy()
+    
     mask = y.notna()
     X = X[mask]
     y = y[mask]
+    
+    if len(y) == 0:
+        st.error("No valid target values found")
+        return None, None
+    
     if y.dtype == 'object': 
         y = LabelEncoder().fit_transform(y)
+    
+    if len(np.unique(y)) < 2:
+        st.error("Target variable must have at least 2 classes")
+        return None, None
+    
     X = X.fillna(X.median())
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     info = {'X_train': X_train.shape, 'X_test': X_test.shape, 'target': target_col}
+    
     models = {}
+    
     try:
         lr = LogisticRegression(random_state=42, max_iter=500, class_weight='balanced', n_jobs=-1)
         lr.fit(X_train, y_train)
         models['Logistic Regression'] = lr
-    except: pass
+    except Exception as e:
+        st.warning(f"Logistic Regression failed: {str(e)}")
+    
     try:
         rf = RandomForestClassifier(n_estimators=50, random_state=42, class_weight='balanced', n_jobs=-1)
         rf.fit(X_train, y_train)
-        models['RandomForestClassifier'] = rf
-    except: pass
+        models['Random Forest'] = rf
+    except Exception as e:
+        st.warning(f"Random Forest failed: {str(e)}")
+    
     try:
         gb = GradientBoostingClassifier(n_estimators=50, random_state=42)
         gb.fit(X_train, y_train)
-        models['GradientBoostingClassifier'] = gb
-    except: pass
+        models['Gradient Boosting'] = gb
+    except Exception as e:
+        st.warning(f"Gradient Boosting failed: {str(e)}")
+    
     results = {}
     for name, model in models.items():
         y_pred = model.predict(X_test)
@@ -277,378 +430,786 @@ def train_and_evaluate_detailed(df, target_col):
             'recall': recall_score(y_test, y_pred, average='weighted', zero_division=0),
             'f1_score': f1_score(y_test, y_pred, average='weighted', zero_division=0),
         }
+    
     return results, info
 
 def plot_distribution(data, column, title):
+    """Create distribution plot using Plotly"""
     try:
         clean = data[column].dropna()
         if clean.empty: 
             return go.Figure()
-        fig = make_subplots(rows=1, cols=2, subplot_titles=('Histogram', 'Box Plot'))
-        fig.add_trace(go.Histogram(x=clean, nbinsx=30, marker_color='#3498db', name='Histogram'), row=1, col=1)
-        fig.add_trace(go.Box(y=clean, marker_color='#e74c3c', name='Box Plot'), row=1, col=2)
-        fig.update_layout(title_text=title, showlegend=False, height=500)
+        
+        fig = make_subplots(
+            rows=1, cols=2, 
+            subplot_titles=('Histogram with KDE', 'Box Plot'),
+            specs=[[{"secondary_y": True}, {"secondary_y": False}]]
+        )
+        
+        # Histogram
+        fig.add_trace(
+            go.Histogram(x=clean, nbinsx=30, marker_color='#3498db', 
+                        name='Histogram', opacity=0.7),
+            row=1, col=1
+        )
+        
+        # Box Plot
+        fig.add_trace(
+            go.Box(y=clean, marker_color='#e74c3c', name='Box Plot'),
+            row=1, col=2
+        )
+        
+        fig.update_layout(
+            title_text=title, 
+            showlegend=False, 
+            height=500,
+            template='plotly_white'
+        )
+        
         return fig
     except Exception as e:
+        st.error(f"Error creating distribution plot: {str(e)}")
         return go.Figure()
 
+def create_matplotlib_distribution(data, column, title):
+    """Create distribution plot using Matplotlib/Seaborn"""
+    try:
+        clean = data[column].dropna()
+        if clean.empty:
+            return None
+        
+        plt.style.use('seaborn-v0_8-darkgrid')
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+        
+        # Histogram with KDE
+        sns.histplot(
+            data=clean, 
+            kde=True, 
+            bins=30, 
+            color='#3498db',
+            edgecolor='white',
+            alpha=0.7,
+            ax=ax1
+        )
+        ax1.set_title(f'Distribution of {column}', fontsize=14, fontweight='bold')
+        ax1.set_xlabel(column, fontsize=12)
+        ax1.set_ylabel('Frequency', fontsize=12)
+        
+        # Add mean and median lines
+        mean_val = clean.mean()
+        median_val = clean.median()
+        ax1.axvline(mean_val, color='red', linestyle='--', linewidth=2, 
+                   label=f'Mean: {mean_val:.2f}')
+        ax1.axvline(median_val, color='green', linestyle='--', linewidth=2, 
+                   label=f'Median: {median_val:.2f}')
+        ax1.legend()
+        
+        # Box Plot
+        sns.boxplot(
+            data=clean,
+            color='#e74c3c',
+            width=0.3,
+            ax=ax2
+        )
+        ax2.set_title(f'Box Plot of {column}', fontsize=14, fontweight='bold')
+        ax2.set_ylabel(column, fontsize=12)
+        
+        # Add statistical annotations
+        stats_text = f"Q1: {clean.quantile(0.25):.2f}\nQ3: {clean.quantile(0.75):.2f}\nIQR: {clean.quantile(0.75) - clean.quantile(0.25):.2f}"
+        ax2.text(1.15, clean.median(), stats_text, 
+                bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray", alpha=0.8),
+                fontsize=10)
+        
+        plt.suptitle(title, fontsize=16, fontweight='bold', y=1.02)
+        plt.tight_layout()
+        return fig
+    except Exception as e:
+        st.error(f"Error creating matplotlib plot: {str(e)}")
+        return None
+
 def main():
+    """Main application function"""
+    
+    # Header
     st.markdown('<p class="main-header">🔬 Microplastic Risk Analysis Dashboard</p>', unsafe_allow_html=True)
     
+    # Sidebar Navigation
     st.sidebar.markdown("## 📊 Navigation")
-    section = st.sidebar.radio("Select Section", [
-        "🏠 Home", 
-        "🔧 Preprocessing", 
-        "🛠️ Feature Selection & Relevance", 
-        "🤖 Modeling", 
-        "📊 Cross Validation & Evaluation"
-    ])
+    section = st.sidebar.radio(
+        "Select Section", 
+        [
+            "🏠 Home", 
+            "🔧 Preprocessing", 
+            "🛠️ Feature Selection & Relevance", 
+            "🤖 Modeling", 
+            "📊 Cross Validation & Evaluation"
+        ],
+        key="main_navigation"
+    )
     
     st.sidebar.markdown("---")
-    st.sidebar.info("This dashboard analyzes microplastic risk data using advanced ML techniques.")
+    st.sidebar.info("""
+    **Dashboard Features:**
+    - 📤 Data Upload & Preview
+    - 📊 Exploratory Data Analysis
+    - 🔧 Data Preprocessing
+    - 🎯 Feature Selection
+    - 🤖 Model Training
+    - 📈 Model Evaluation
+    """)
+    
     st.sidebar.markdown("---")
     
+    # Status indicators
     st.sidebar.markdown("### 📌 Status")
-    if st.session_state.data is not None: 
-        st.sidebar.success("✅ Data Loaded")
-    else: 
-        st.sidebar.warning("⚠️ No Data")
-    if st.session_state.trained: 
-        st.sidebar.success("✅ Models Trained")
-    else: 
-        st.sidebar.warning("⚠️ Models Not Trained")
-    if st.session_state.processed_data is not None:
-        st.sidebar.success("✅ Preprocessing Done")
     
-    # ==================== HOME ====================
+    col1, col2 = st.sidebar.columns(2)
+    with col1:
+        if st.session_state.data is not None: 
+            st.success("✅ Data")
+        else: 
+            st.warning("⚠️ No Data")
+    
+    with col2:
+        if st.session_state.trained: 
+            st.success("✅ Models")
+        else: 
+            st.warning("⚠️ No Models")
+    
+    if st.session_state.processed_data is not None:
+        st.sidebar.success("✅ Preprocessed")
+    
+    # ==================== HOME PAGE ====================
     if section == "🏠 Home":
-        st.markdown('<p class="section-header">🏠 Home - Dataset Overview</p>', unsafe_allow_html=True)
+        st.markdown('<p class="section-header">🏠 Home - Dataset Overview & Exploratory Analysis</p>', 
+                   unsafe_allow_html=True)
         
         home_tab1, home_tab2, home_tab3, home_tab4, home_tab5 = st.tabs([
-            "📤 Upload & Preview", "📊 Risk Score Distribution", 
-            "🔬 MP Count vs Risk Score", "📊 Risk Score by Risk Level", "🔍 Data Quality Check"
+            "📤 Upload & Preview", 
+            "📊 Risk Score Distribution", 
+            "🔬 MP Count vs Risk Score", 
+            "📊 Risk Score by Risk Level", 
+            "🔍 Data Quality Check"
         ])
         
+        # ==================== HOME TAB 1: Upload & Preview ====================
         with home_tab1:
             st.markdown("### 📤 Upload Dataset")
-            c1, c2 = st.columns([2, 1])
-            with c1:
-                f = st.file_uploader("Upload dataset (CSV/Excel)", type=['csv','xlsx','xls'])
-                if f: load_dataset(f)
-            with c2:
-                if st.button("Generate Sample Dataset", type="primary"):
+            
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                uploaded_file = st.file_uploader(
+                    "Upload dataset (CSV/Excel)", 
+                    type=['csv','xlsx','xls'],
+                    help="Upload your microplastic risk dataset"
+                )
+                if uploaded_file:
+                    data = load_dataset(uploaded_file)
+                    if data is not None:
+                        st.success(f"✅ Dataset loaded successfully! Shape: {data.shape[0]} rows × {data.shape[1]} columns")
+            
+            with col2:
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button("🎲 Generate Sample Dataset", type="primary", use_container_width=True):
                     st.session_state.data = generate_sample_data()
-                    st.success("✅ Sample dataset generated with outliers!")
+                    st.success("✅ Sample dataset generated with realistic outliers!")
                     st.rerun()
             
             if st.session_state.data is not None:
                 df = st.session_state.data
-                c1, c2, c3 = st.columns(3)
-                with c1: st.metric("Samples", df.shape[0])
-                with c2: st.metric("Features", df.shape[1])
-                with c3: st.metric("Missing Values", df.isnull().sum().sum())
-                st.markdown("#### Data Preview")
+                
+                # Key metrics
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("📊 Total Samples", f"{df.shape[0]:,}")
+                with col2:
+                    st.metric("🔢 Features", df.shape[1])
+                with col3:
+                    st.metric("⚠️ Missing Values", f"{df.isnull().sum().sum():,}")
+                with col4:
+                    missing_pct = (df.isnull().sum().sum() / (df.shape[0] * df.shape[1])) * 100
+                    st.metric("📉 Missing %", f"{missing_pct:.2f}%")
+                
+                st.markdown("---")
+                
+                # Data Preview
+                st.markdown("#### 📋 Data Preview (First 10 Rows)")
                 st.dataframe(df.head(10), use_container_width=True)
-                st.markdown("#### Column Information")
+                
+                # Column Information
+                st.markdown("#### 📊 Column Information")
                 col_info = pd.DataFrame({
-                    'Column': df.columns,
-                    'Type': df.dtypes.values,
-                    'Missing': df.isnull().sum().values,
-                    'Missing %': (df.isnull().sum() / len(df) * 100).round(2).values
+                    'Column Name': df.columns,
+                    'Data Type': df.dtypes.values,
+                    'Missing Values': df.isnull().sum().values,
+                    'Missing %': (df.isnull().sum() / len(df) * 100).round(2).values,
+                    'Unique Values': [df[col].nunique() for col in df.columns]
                 })
                 st.dataframe(col_info, use_container_width=True, hide_index=True)
-        
-# Home Tab 2 - Enhanced Risk Score Distribution Analysis
-with home_tab2:
-    st.markdown("### 📊 Analyze the Distribution of Risk Score")
-    
-    if st.session_state.data is None: 
-        st.warning("⚠️ Upload data first!")
-    else:
-        df = st.session_state.data
-        
-        # Check if Risk_Score column exists
-        if 'Risk_Score' not in df.columns:
-            st.error("❌ 'Risk_Score' column not found in dataset!")
-        else:
-            # Convert to numeric and handle missing values
-            df['Risk_Score'] = pd.to_numeric(df['Risk_Score'], errors='coerce')
-            clean_data = df['Risk_Score'].dropna()
-            
-            if len(clean_data) == 0:
-                st.error("❌ No valid Risk_Score data found after cleaning!")
-            else:
-                # Visualization type selector
-                viz_type = st.radio(
-                    "Select Visualization Type:",
-                    ["📊 Interactive (Plotly)", "📈 Static (Matplotlib/Seaborn)", "🔢 Both"],
-                    horizontal=True
-                )
                 
-                if viz_type in ["📊 Interactive (Plotly)", "🔢 Both"]:
-                    st.markdown("#### Interactive Visualization (Plotly)")
-                    st.plotly_chart(
-                        plot_distribution(df, 'Risk_Score', 'Risk Score Distribution'), 
-                        use_container_width=True
-                    )
-                
-                if viz_type in ["📈 Static (Matplotlib/Seaborn)", "🔢 Both"]:
-                    st.markdown("#### Static Visualization (Matplotlib/Seaborn)")
-                    
-                    # Create matplotlib/seaborn visualization
-                    import matplotlib.pyplot as plt
-                    import seaborn as sns
-                    
-                    # Set style
-                    plt.style.use('seaborn-v0_8-darkgrid')
-                    
-                    # Create figure with subplots
-                    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
-                    
-                    # Histogram with KDE
-                    sns.histplot(
-                        data=clean_data, 
-                        kde=True, 
-                        bins=30, 
-                        color='#3498db',
-                        edgecolor='white',
-                        alpha=0.7,
-                        ax=ax1
-                    )
-                    ax1.set_title('Distribution of Risk Score', fontsize=14, fontweight='bold')
-                    ax1.set_xlabel('Risk Score', fontsize=12)
-                    ax1.set_ylabel('Frequency', fontsize=12)
-                    
-                    # Add mean and median lines
-                    mean_val = clean_data.mean()
-                    median_val = clean_data.median()
-                    ax1.axvline(mean_val, color='red', linestyle='--', linewidth=2, label=f'Mean: {mean_val:.2f}')
-                    ax1.axvline(median_val, color='green', linestyle='--', linewidth=2, label=f'Median: {median_val:.2f}')
-                    ax1.legend()
-                    
-                    # Box Plot
-                    sns.boxplot(
-                        data=clean_data,
-                        color='#e74c3c',
-                        width=0.3,
-                        ax=ax2
-                    )
-                    ax2.set_title('Box Plot of Risk Score', fontsize=14, fontweight='bold')
-                    ax2.set_ylabel('Risk Score', fontsize=12)
-                    
-                    # Add statistical annotations to box plot
-                    stats_text = f"Q1: {clean_data.quantile(0.25):.2f}\nQ3: {clean_data.quantile(0.75):.2f}\nIQR: {clean_data.quantile(0.75) - clean_data.quantile(0.25):.2f}"
-                    ax2.text(1.15, clean_data.median(), stats_text, 
-                            bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray", alpha=0.8),
-                            fontsize=10)
-                    
-                    plt.tight_layout()
-                    st.pyplot(fig)
-                    plt.close()
-                
-                st.markdown("---")
-                
-                # Comprehensive Statistics Section
-                st.markdown("#### 📈 Descriptive Statistics")
-                
-                # Calculate statistics
-                stats_dict = {
-                    'Count': len(clean_data),
-                    'Mean': clean_data.mean(),
-                    'Median': clean_data.median(),
-                    'Std Dev': clean_data.std(),
-                    'Variance': clean_data.var(),
-                    'Skewness': clean_data.skew(),
-                    'Kurtosis': clean_data.kurtosis(),
-                    'Min': clean_data.min(),
-                    '25th Percentile (Q1)': clean_data.quantile(0.25),
-                    '50th Percentile (Q2)': clean_data.quantile(0.50),
-                    '75th Percentile (Q3)': clean_data.quantile(0.75),
-                    'Max': clean_data.max(),
-                    'IQR': clean_data.quantile(0.75) - clean_data.quantile(0.25),
-                    'Range': clean_data.max() - clean_data.min()
-                }
-                
-                # Display statistics in columns
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    st.metric("📊 Count", f"{stats_dict['Count']:,}")
-                    st.metric("📈 Mean", f"{stats_dict['Mean']:.4f}")
-                    st.metric("📐 Median", f"{stats_dict['Median']:.4f}")
-                    st.metric("📏 Std Dev", f"{stats_dict['Std Dev']:.4f}")
-                    st.metric("📊 Variance", f"{stats_dict['Variance']:.4f}")
-                
-                with col2:
-                    st.metric("↗️ Skewness", f"{stats_dict['Skewness']:.4f}")
-                    st.metric("⛰️ Kurtosis", f"{stats_dict['Kurtosis']:.4f}")
-                    st.metric("⬇️ Min", f"{stats_dict['Min']:.4f}")
-                    st.metric("Q1", f"{stats_dict['25th Percentile (Q1)']:.4f}")
-                    st.metric("Q2", f"{stats_dict['50th Percentile (Q2)']:.4f}")
-                
-                with col3:
-                    st.metric("Q3", f"{stats_dict['75th Percentile (Q3)']:.4f}")
-                    st.metric("⬆️ Max", f"{stats_dict['Max']:.4f}")
-                    st.metric("📏 IQR", f"{stats_dict['IQR']:.4f}")
-                    st.metric("↔️ Range", f"{stats_dict['Range']:.4f}")
-                
-                st.markdown("---")
-                
-                # Risk Level Distribution
-                st.markdown("#### 🎯 Risk Score Categories Distribution")
-                
-                # Define risk categories
-                def categorize_risk(score):
-                    if score < 25:
-                        return '🟢 Low Risk (0-25)'
-                    elif score < 50:
-                        return '🟡 Medium Risk (25-50)'
-                    elif score < 75:
-                        return '🟠 High Risk (50-75)'
-                    else:
-                        return '🔴 Critical Risk (75-100)'
-                
-                risk_categories = clean_data.apply(categorize_risk)
-                category_counts = risk_categories.value_counts()
-                
-                # Create category distribution dataframe
-                cat_df = pd.DataFrame({
-                    'Category': category_counts.index,
-                    'Count': category_counts.values,
-                    'Percentage': (category_counts.values / len(clean_data) * 100).round(2)
-                })
-                
-                # Display category distribution
-                for _, row in cat_df.iterrows():
-                    col1, col2, col3 = st.columns([3, 1, 1])
-                    with col1:
-                        st.markdown(f"**{row['Category']}**")
-                        st.progress(int(row['Percentage']))
-                    with col2:
-                        st.metric("Count", f"{row['Count']:,}")
-                    with col3:
-                        st.metric("%", f"{row['Percentage']:.1f}%")
-                
-                st.markdown("---")
-                
-                # Outlier Detection
-                st.markdown("#### 🔍 Outlier Analysis")
-                
-                Q1 = clean_data.quantile(0.25)
-                Q3 = clean_data.quantile(0.75)
-                IQR = Q3 - Q1
-                lower_bound = Q1 - 1.5 * IQR
-                upper_bound = Q3 + 1.5 * IQR
-                
-                outliers = clean_data[(clean_data < lower_bound) | (clean_data > upper_bound)]
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("Lower Bound (Q1 - 1.5×IQR)", f"{lower_bound:.4f}")
-                    st.metric("Upper Bound (Q3 + 1.5×IQR)", f"{upper_bound:.4f}")
-                
-                with col2:
-                    st.metric("Number of Outliers", len(outliers))
-                    st.metric("Outlier Percentage", f"{(len(outliers)/len(clean_data)*100):.2f}%")
-                
-                if len(outliers) > 0:
-                    with st.expander("View Outlier Details"):
-                        outlier_df = pd.DataFrame({
-                            'Index': outliers.index,
-                            'Risk Score': outliers.values
-                        })
-                        st.dataframe(outlier_df.head(20), use_container_width=True)
-                
-                st.markdown("---")
-                
-                # Distribution Shape Analysis
-                st.markdown("#### 📊 Distribution Shape Analysis")
-                
-                skewness = clean_data.skew()
-                if abs(skewness) < 0.5:
-                    shape = "Approximately Symmetric"
-                    interpretation = "The distribution is roughly symmetric, suggesting balanced risk scores."
-                elif skewness > 0.5:
-                    shape = "Right-Skewed (Positive Skew)"
-                    interpretation = "The distribution has a longer right tail, indicating more samples with higher risk scores."
-                else:
-                    shape = "Left-Skewed (Negative Skew)"
-                    interpretation = "The distribution has a longer left tail, indicating more samples with lower risk scores."
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.info(f"**Distribution Shape:** {shape}")
-                with col2:
-                    st.success(f"**Interpretation:** {interpretation}")
-                
-                # Add download option for statistics
-                stats_export = pd.DataFrame(list(stats_dict.items()), columns=['Statistic', 'Value'])
-                csv = stats_export.to_csv(index=False)
+                # Download column info
+                csv = col_info.to_csv(index=False)
                 st.download_button(
-                    label="📥 Download Statistics",
+                    label="📥 Download Column Info",
                     data=csv,
-                    file_name="risk_score_statistics.csv",
+                    file_name="column_information.csv",
                     mime="text/csv"
                 )
         
-        with home_tab3:
-            st.markdown("### 🔬 Explore the Relationship Between Risk Score and MP Count per L")
-            if st.session_state.data is None: st.warning("⚠️ Upload data first!")
+        # ==================== HOME TAB 2: Risk Score Distribution ====================
+        with home_tab2:
+            st.markdown("### 📊 Analyze the Distribution of Risk Score")
+            st.markdown("""
+            **Objective 1:** Visualize the distribution of the Risk_Score column using histogram and box plot.
+            This analysis helps understand the central tendency, spread, and presence of outliers in risk scores.
+            """)
+            
+            if st.session_state.data is None: 
+                st.warning("⚠️ Please upload data or generate sample data first!")
             else:
                 df = st.session_state.data
-                if 'MP_Count_per_L' in df.columns and 'Risk_Score' in df.columns:
+                
+                if 'Risk_Score' not in df.columns:
+                    st.error("❌ 'Risk_Score' column not found in dataset!")
+                    st.info("Available columns: " + ", ".join(df.columns.tolist()))
+                else:
+                    # Convert to numeric
+                    df['Risk_Score'] = pd.to_numeric(df['Risk_Score'], errors='coerce')
+                    clean_data = df['Risk_Score'].dropna()
+                    
+                    if len(clean_data) == 0:
+                        st.error("❌ No valid Risk_Score data found after cleaning!")
+                    else:
+                        # Visualization options
+                        st.markdown("#### 🎨 Visualization Options")
+                        viz_type = st.radio(
+                            "Select Visualization Type:",
+                            ["📊 Interactive (Plotly)", "📈 Static (Matplotlib/Seaborn)", "🔢 Both"],
+                            horizontal=True,
+                            key="risk_score_viz_type"
+                        )
+                        
+                        st.markdown("---")
+                        
+                        # Interactive visualization
+                        if viz_type in ["📊 Interactive (Plotly)", "🔢 Both"]:
+                            st.markdown("#### 📊 Interactive Visualization (Plotly)")
+                            st.plotly_chart(
+                                plot_distribution(df, 'Risk_Score', 'Risk Score Distribution'), 
+                                use_container_width=True
+                            )
+                            
+                            if viz_type == "🔢 Both":
+                                st.markdown("---")
+                        
+                        # Static visualization with Matplotlib/Seaborn
+                        if viz_type in ["📈 Static (Matplotlib/Seaborn)", "🔢 Both"]:
+                            st.markdown("#### 📈 Static Visualization (Matplotlib/Seaborn)")
+                            
+                            fig = create_matplotlib_distribution(df, 'Risk_Score', 'Risk Score Distribution Analysis')
+                            if fig:
+                                st.pyplot(fig)
+                                plt.close()
+                            else:
+                                st.error("Failed to create visualization")
+                        
+                        st.markdown("---")
+                        
+                        # Comprehensive Statistics
+                        st.markdown("#### 📈 Descriptive Statistics for Risk Score")
+                        
+                        # Calculate statistics
+                        q1 = clean_data.quantile(0.25)
+                        q3 = clean_data.quantile(0.75)
+                        iqr = q3 - q1
+                        
+                        # Create statistics in columns
+                        col1, col2, col3, col4 = st.columns(4)
+                        
+                        with col1:
+                            st.metric("📊 Count", f"{len(clean_data):,}")
+                            st.metric("📈 Mean", f"{clean_data.mean():.4f}")
+                            st.metric("📐 Median", f"{clean_data.median():.4f}")
+                            st.metric("📏 Std Dev", f"{clean_data.std():.4f}")
+                        
+                        with col2:
+                            st.metric("↗️ Skewness", f"{clean_data.skew():.4f}")
+                            st.metric("⛰️ Kurtosis", f"{clean_data.kurtosis():.4f}")
+                            st.metric("⬇️ Minimum", f"{clean_data.min():.4f}")
+                            st.metric("⬆️ Maximum", f"{clean_data.max():.4f}")
+                        
+                        with col3:
+                            st.metric("Q1 (25th)", f"{q1:.4f}")
+                            st.metric("Q2 (50th)", f"{clean_data.median():.4f}")
+                            st.metric("Q3 (75th)", f"{q3:.4f}")
+                            st.metric("IQR", f"{iqr:.4f}")
+                        
+                        with col4:
+                            st.metric("Range", f"{clean_data.max() - clean_data.min():.4f}")
+                            variance = clean_data.var()
+                            st.metric("Variance", f"{variance:.4f}")
+                            cv = (clean_data.std() / clean_data.mean()) * 100
+                            st.metric("CV %", f"{cv:.2f}%")
+                            st.metric("Mode", f"{clean_data.mode().iloc[0] if not clean_data.mode().empty else 'N/A':.4f}")
+                        
+                        st.markdown("---")
+                        
+                        # Risk Categories Distribution
+                        st.markdown("#### 🎯 Risk Score Categories Distribution")
+                        
+                        # Categorize risk scores
+                        def categorize_risk(score):
+                            if score < 25:
+                                return '🟢 Low Risk (0-25)'
+                            elif score < 50:
+                                return '🟡 Medium Risk (25-50)'
+                            elif score < 75:
+                                return '🟠 High Risk (50-75)'
+                            else:
+                                return '🔴 Critical Risk (75+)'
+                        
+                        risk_categories = clean_data.apply(categorize_risk)
+                        category_counts = risk_categories.value_counts()
+                        
+                        # Display categories
+                        for category in ['🟢 Low Risk (0-25)', '🟡 Medium Risk (25-50)', 
+                                       '🟠 High Risk (50-75)', '🔴 Critical Risk (75+)']:
+                            count = category_counts.get(category, 0)
+                            percentage = (count / len(clean_data)) * 100
+                            
+                            col1, col2, col3 = st.columns([3, 1, 1])
+                            with col1:
+                                st.markdown(f"**{category}**")
+                                st.progress(int(percentage))
+                            with col2:
+                                st.metric("Count", f"{count:,}")
+                            with col3:
+                                st.metric("Percentage", f"{percentage:.1f}%")
+                        
+                        st.markdown("---")
+                        
+                        # Outlier Analysis
+                        st.markdown("#### 🔍 Outlier Analysis")
+                        
+                        lower_bound = q1 - 1.5 * iqr
+                        upper_bound = q3 + 1.5 * iqr
+                        outliers = clean_data[(clean_data < lower_bound) | (clean_data > upper_bound)]
+                        
+                        col1, col2, col3, col4 = st.columns(4)
+                        with col1:
+                            st.metric("Lower Bound", f"{lower_bound:.4f}")
+                        with col2:
+                            st.metric("Upper Bound", f"{upper_bound:.4f}")
+                        with col3:
+                            st.metric("Outliers Found", len(outliers))
+                        with col4:
+                            st.metric("Outlier %", f"{(len(outliers)/len(clean_data)*100):.2f}%")
+                        
+                        if len(outliers) > 0:
+                            with st.expander("🔍 View Outlier Details"):
+                                outlier_df = pd.DataFrame({
+                                    'Index': outliers.index,
+                                    'Risk Score': outliers.values,
+                                    'Category': outliers.apply(
+                                        lambda x: 'Below' if x < lower_bound else 'Above'
+                                    )
+                                })
+                                st.dataframe(outlier_df.head(20), use_container_width=True)
+                                
+                                # Outlier distribution
+                                fig, ax = plt.subplots(figsize=(8, 4))
+                                outlier_df['Category'].value_counts().plot(
+                                    kind='pie', 
+                                    autopct='%1.1f%%',
+                                    ax=ax,
+                                    colors=['#ff9999', '#66b3ff']
+                                )
+                                ax.set_title('Outlier Distribution (Above/Below Bounds)')
+                                st.pyplot(fig)
+                                plt.close()
+                        
+                        st.markdown("---")
+                        
+                        # Distribution Shape Analysis
+                        st.markdown("#### 📊 Distribution Shape Analysis")
+                        
+                        skewness = clean_data.skew()
+                        if abs(skewness) < 0.5:
+                            shape = "Approximately Symmetric"
+                            color = "green"
+                            interpretation = "The distribution is roughly symmetric, suggesting balanced risk scores without significant skew."
+                        elif skewness > 0.5:
+                            shape = "Right-Skewed (Positive Skew)"
+                            color = "orange"
+                            interpretation = "The distribution has a longer right tail. More samples have higher risk scores, and the mean is likely greater than the median. Consider investigating what causes high risk scores."
+                        else:
+                            shape = "Left-Skewed (Negative Skew)"
+                            color = "red"
+                            interpretation = "The distribution has a longer left tail. More samples have lower risk scores, and the mean is likely less than the median. Consider if risk assessment might be underestimating hazards."
+                        
+                        st.info(f"**Distribution Shape:** {shape}  \n**Interpretation:** {interpretation}")
+                        
+                        # Normality test
+                        from scipy.stats import normaltest
+                        statistic, p_value = normaltest(clean_data)
+                        if p_value < 0.05:
+                            st.warning(f"**Normality Test:** The distribution is NOT normal (p-value: {p_value:.4f}). Consider applying transformations for certain statistical analyses.")
+                        else:
+                            st.success(f"**Normality Test:** The distribution appears normal (p-value: {p_value:.4f}).")
+                        
+                        # Download options
+                        st.markdown("---")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            # Download statistics
+                            stats_dict = {
+                                'Statistic': ['Count', 'Mean', 'Median', 'Std Dev', 'Skewness', 
+                                            'Kurtosis', 'Min', 'Q1', 'Q3', 'Max', 'IQR', 'Range',
+                                            'Variance', 'CV%'],
+                                'Value': [len(clean_data), clean_data.mean(), clean_data.median(), 
+                                        clean_data.std(), clean_data.skew(), clean_data.kurtosis(),
+                                        clean_data.min(), q1, q3, clean_data.max(), iqr,
+                                        clean_data.max() - clean_data.min(), clean_data.var(), cv]
+                            }
+                            stats_df = pd.DataFrame(stats_dict)
+                            csv_stats = stats_df.to_csv(index=False)
+                            st.download_button(
+                                label="📥 Download Statistics (CSV)",
+                                data=csv_stats,
+                                file_name="risk_score_statistics.csv",
+                                mime="text/csv",
+                                use_container_width=True
+                            )
+                        
+                        with col2:
+                            # Download cleaned data
+                            csv_data = clean_data.to_csv(index=False)
+                            st.download_button(
+                                label="📥 Download Clean Data (CSV)",
+                                data=csv_data,
+                                file_name="risk_score_clean_data.csv",
+                                mime="text/csv",
+                                use_container_width=True
+                            )
+        
+        # ==================== HOME TAB 3: MP Count vs Risk Score ====================
+        with home_tab3:
+            st.markdown("### 🔬 Explore the Relationship Between MP Count and Risk Score")
+            st.markdown("""
+            **Objective 2:** Investigate the correlation between Microplastic Count per Liter and Risk Score.
+            Understanding this relationship is crucial for risk assessment models.
+            """)
+            
+            if st.session_state.data is None: 
+                st.warning("⚠️ Upload data first!")
+            else:
+                df = st.session_state.data
+                
+                if 'MP_Count_per_L' not in df.columns or 'Risk_Score' not in df.columns:
+                    missing_cols = []
+                    if 'MP_Count_per_L' not in df.columns:
+                        missing_cols.append('MP_Count_per_L')
+                    if 'Risk_Score' not in df.columns:
+                        missing_cols.append('Risk_Score')
+                    st.error(f"❌ Missing required columns: {', '.join(missing_cols)}")
+                else:
+                    # Convert to numeric
                     df['MP_Count_per_L'] = pd.to_numeric(df['MP_Count_per_L'], errors='coerce')
                     df['Risk_Score'] = pd.to_numeric(df['Risk_Score'], errors='coerce')
                     clean = df.dropna(subset=['MP_Count_per_L', 'Risk_Score'])
-                    if len(clean) > 0:
-                        st1, st2, st3 = st.tabs(["📊 Scatter", "📈 Trendline", "📋 Correlation"])
+                    
+                    if len(clean) == 0:
+                        st.error("❌ No valid data after cleaning!")
+                    else:
+                        # Visualization tabs
+                        st1, st2, st3 = st.tabs([
+                            "📊 Scatter Plot", 
+                            "📈 Trend Analysis", 
+                            "📋 Correlation Analysis"
+                        ])
+                        
                         with st1:
-                            fig = px.scatter(clean, x='MP_Count_per_L', y='Risk_Score',
-                                            color='Risk_Level' if 'Risk_Level' in clean.columns else None,
-                                            title='MP Count per Liter vs Risk Score', opacity=0.7)
+                            st.markdown("#### Scatter Plot: MP Count vs Risk Score")
+                            
+                            # Color by Risk Level if available
+                            color_col = None
+                            if 'Risk_Level' in clean.columns:
+                                color_col = 'Risk_Level'
+                            
+                            fig = px.scatter(
+                                clean, 
+                                x='MP_Count_per_L', 
+                                y='Risk_Score',
+                                color=color_col,
+                                title='MP Count per Liter vs Risk Score',
+                                opacity=0.7,
+                                trendline=None,
+                                labels={
+                                    'MP_Count_per_L': 'MP Count per Liter',
+                                    'Risk_Score': 'Risk Score'
+                                }
+                            )
+                            fig.update_layout(height=500)
                             st.plotly_chart(fig, use_container_width=True)
+                            
+                            # Statistics
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.metric("Mean MP Count", f"{clean['MP_Count_per_L'].mean():.2f}")
+                                st.metric("Std MP Count", f"{clean['MP_Count_per_L'].std():.2f}")
+                            with col2:
+                                st.metric("Mean Risk Score", f"{clean['Risk_Score'].mean():.2f}")
+                                st.metric("Std Risk Score", f"{clean['Risk_Score'].std():.2f}")
+                        
                         with st2:
+                            st.markdown("#### Trend Analysis")
+                            
+                            # Try different trendlines
                             try:
-                                fig = px.scatter(clean, x='MP_Count_per_L', y='Risk_Score',
-                                                color='Risk_Level' if 'Risk_Level' in clean.columns else None,
-                                                trendline='ols', title='MP Count vs Risk Score with Trendline', opacity=0.7)
+                                fig = px.scatter(
+                                    clean, 
+                                    x='MP_Count_per_L', 
+                                    y='Risk_Score',
+                                    color=color_col,
+                                    trendline='ols',
+                                    title='MP Count vs Risk Score with Linear Trend',
+                                    opacity=0.7
+                                )
+                                fig.update_layout(height=500)
                                 st.plotly_chart(fig, use_container_width=True)
-                            except: st.warning("Trendline not available for this data")
+                                
+                                # Add LOWESS trendline
+                                from scipy.interpolate import make_interp_spline
+                                
+                                st.markdown("**Alternative: LOWESS Smoother**")
+                                fig2 = px.scatter(
+                                    clean, 
+                                    x='MP_Count_per_L', 
+                                    y='Risk_Score',
+                                    color=color_col,
+                                    trendline='lowess',
+                                    title='MP Count vs Risk Score with LOWESS Trend',
+                                    opacity=0.7
+                                )
+                                fig2.update_layout(height=500)
+                                st.plotly_chart(fig2, use_container_width=True)
+                                
+                            except Exception as e:
+                                st.warning(f"Trendline calculation failed: {str(e)}")
+                        
                         with st3:
-                            corr = clean['MP_Count_per_L'].corr(clean['Risk_Score'])
-                            st.metric("Correlation", f"{corr:.4f}")
+                            st.markdown("#### Correlation Analysis")
+                            
+                            # Calculate correlations
+                            pearson_corr = clean['MP_Count_per_L'].corr(clean['Risk_Score'])
+                            spearman_corr = clean['MP_Count_per_L'].corr(clean['Risk_Score'], method='spearman')
+                            kendall_corr = clean['MP_Count_per_L'].corr(clean['Risk_Score'], method='kendall')
+                            
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric("Pearson Correlation", f"{pearson_corr:.4f}")
+                                if abs(pearson_corr) < 0.3:
+                                    st.caption("Weak correlation")
+                                elif abs(pearson_corr) < 0.7:
+                                    st.caption("Moderate correlation")
+                                else:
+                                    st.caption("Strong correlation")
+                            
+                            with col2:
+                                st.metric("Spearman Correlation", f"{spearman_corr:.4f}")
+                                st.caption("Monotonic relationship")
+                            
+                            with col3:
+                                st.metric("Kendall's Tau", f"{kendall_corr:.4f}")
+                                st.caption("Ordinal association")
+                            
+                            # Interpretation
+                            st.markdown("---")
+                            st.markdown("#### 📊 Interpretation")
+                            
+                            if abs(pearson_corr) > 0.5:
+                                st.warning("""
+                                **Strong Relationship Detected:**
+                                - MP Count is strongly correlated with Risk Score
+                                - MP Count could be a key predictor for risk assessment
+                                - Consider using MP Count as a primary feature in risk models
+                                """)
+                            else:
+                                st.info("""
+                                **Moderate/Weak Relationship:**
+                                - Other factors may be more important for risk assessment
+                                - Consider multivariate analysis to identify key predictors
+                                - MP Count alone may not be sufficient for accurate risk prediction
+                                """)
+                        
+                        # Advanced Analysis
+                        st.markdown("---")
+                        with st.expander("🔬 Advanced Analysis"):
+                            st.markdown("#### Regression Analysis")
+                            
+                            # Simple linear regression
+                            from sklearn.linear_model import LinearRegression
+                            X = clean[['MP_Count_per_L']].values
+                            y = clean['Risk_Score'].values
+                            
+                            reg = LinearRegression().fit(X, y)
+                            r2 = reg.score(X, y)
+                            
+                            st.metric("R² Score", f"{r2:.4f}")
+                            st.write(f"**Equation:** Risk_Score = {reg.intercept_:.4f} + ({reg.coef_[0]:.4f} × MP_Count_per_L)")
+                            
+                            st.write("""
+                            **Interpretation:**
+                            - For each unit increase in MP Count, Risk Score changes by the coefficient
+                            - R² indicates how well MP Count explains Risk Score variance
+                            """)
         
+        # ==================== HOME TAB 4: Risk Score by Risk Level ====================
         with home_tab4:
-            st.markdown("### 📊 Investigate Difference: Risk Score by Risk Level")
-            if st.session_state.data is None: st.warning("⚠️ Upload data first!")
+            st.markdown("### 📊 Investigate Risk Score Differences by Risk Level")
+            st.markdown("""
+            **Objective 3:** Analyze how Risk Score varies across different Risk Level categories.
+            This helps validate the risk level classification system.
+            """)
+            
+            if st.session_state.data is None: 
+                st.warning("⚠️ Upload data first!")
             else:
                 df = st.session_state.data
-                if 'Risk_Score' in df.columns and 'Risk_Level' in df.columns:
+                
+                if 'Risk_Score' not in df.columns or 'Risk_Level' not in df.columns:
+                    missing_cols = []
+                    if 'Risk_Score' not in df.columns:
+                        missing_cols.append('Risk_Score')
+                    if 'Risk_Level' not in df.columns:
+                        missing_cols.append('Risk_Level')
+                    st.error(f"❌ Missing required columns: {', '.join(missing_cols)}")
+                else:
+                    # Convert and clean
                     df['Risk_Score'] = pd.to_numeric(df['Risk_Score'], errors='coerce')
-                    clean = df.dropna(subset=['Risk_Score'])
+                    clean = df.dropna(subset=['Risk_Score', 'Risk_Level'])
                     clean['Risk_Level'] = clean['Risk_Level'].astype(str)
-                    if len(clean) > 0:
-                        fig = px.box(clean, x='Risk_Level', y='Risk_Score', color='Risk_Level',
-                                    title='Risk Score by Risk Level', points='outliers')
+                    
+                    if len(clean) == 0:
+                        st.error("❌ No valid data after cleaning!")
+                    else:
+                        # Visualization
+                        st.markdown("#### Box Plot: Risk Score by Risk Level")
+                        
+                        fig = px.box(
+                            clean, 
+                            x='Risk_Level', 
+                            y='Risk_Score', 
+                            color='Risk_Level',
+                            title='Risk Score Distribution by Risk Level',
+                            points='outliers'
+                        )
+                        fig.update_layout(height=500, showlegend=False)
                         st.plotly_chart(fig, use_container_width=True)
+                        
+                        # Violin plot
+                        st.markdown("#### Violin Plot: Distribution Shape by Risk Level")
+                        fig2 = px.violin(
+                            clean,
+                            x='Risk_Level',
+                            y='Risk_Score',
+                            color='Risk_Level',
+                            title='Distribution Shape by Risk Level',
+                            box=True,
+                            points='all'
+                        )
+                        fig2.update_layout(height=500, showlegend=False)
+                        st.plotly_chart(fig2, use_container_width=True)
+                        
+                        # Statistics by Risk Level
+                        st.markdown("#### 📊 Statistics by Risk Level")
+                        
+                        stats_by_level = clean.groupby('Risk_Level')['Risk_Score'].agg([
+                            'count', 'mean', 'median', 'std', 'min', 'max'
+                        ]).round(4)
+                        
+                        stats_by_level.columns = ['Count', 'Mean', 'Median', 'Std Dev', 'Min', 'Max']
+                        st.dataframe(stats_by_level, use_container_width=True)
+                        
+                        # ANOVA test
+                        from scipy.stats import f_oneway
+                        
+                        risk_levels = clean['Risk_Level'].unique()
+                        if len(risk_levels) >= 2:
+                            groups = [clean[clean['Risk_Level'] == level]['Risk_Score'].values 
+                                     for level in risk_levels]
+                            f_stat, p_value = f_oneway(*groups)
+                            
+                            st.markdown(f"""
+                            #### Statistical Test (ANOVA)
+                            - **F-statistic:** {f_stat:.4f}
+                            - **P-value:** {p_value:.4f}
+                            - **Conclusion:** {'Significant differences exist between risk levels' if p_value < 0.05 else 'No significant differences between risk levels'}
+                            """)
         
+        # ==================== HOME TAB 5: Data Quality Check ====================
         with home_tab5:
             st.markdown("### 🔍 Data Quality Check")
-            if st.session_state.data is None: st.warning("⚠️ Upload data first!")
+            
+            if st.session_state.data is None: 
+                st.warning("⚠️ Upload data first!")
             else:
                 df = st.session_state.data
-                c1, c2, c3, c4 = st.columns(4)
-                with c1: st.metric("Missing %", f"{(df.isnull().sum().sum()/(df.shape[0]*df.shape[1]))*100:.2f}%")
-                with c2: st.metric("Duplicates", df.duplicated().sum())
-                with c3: st.metric("Numeric Cols", len(df.select_dtypes(include=['float64', 'int64']).columns))
-                with c4: st.metric("Categorical Cols", len(df.select_dtypes(include=['object']).columns))
+                
+                # Quality metrics
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    missing_pct = (df.isnull().sum().sum() / (df.shape[0] * df.shape[1])) * 100
+                    st.metric("Missing Values %", f"{missing_pct:.2f}%")
+                with col2:
+                    st.metric("Duplicate Rows", df.duplicated().sum())
+                with col3:
+                    st.metric("Numeric Columns", len(df.select_dtypes(include=['float64', 'int64']).columns))
+                with col4:
+                    st.metric("Categorical Columns", len(df.select_dtypes(include=['object']).columns))
+                
                 st.markdown("---")
-                st.write("**Descriptive Statistics:**")
+                
+                # Missing values heatmap
+                st.markdown("#### Missing Values Pattern")
+                
+                if df.isnull().sum().sum() > 0:
+                    fig, ax = plt.subplots(figsize=(12, 6))
+                    sns.heatmap(df.isnull(), cbar=True, yticklabels=False, cmap='viridis')
+                    ax.set_title('Missing Values Pattern (Yellow = Missing)')
+                    st.pyplot(fig)
+                    plt.close()
+                else:
+                    st.success("✅ No missing values found!")
+                
+                # Data types summary
+                st.markdown("#### Data Types Distribution")
+                
+                dtype_counts = df.dtypes.value_counts()
+                fig, ax = plt.subplots(figsize=(8, 4))
+                dtype_counts.plot(kind='bar', color=['#3498db', '#e74c3c', '#2ecc71'])
+                ax.set_title('Distribution of Data Types')
+                ax.set_xlabel('Data Type')
+                ax.set_ylabel('Count')
+                plt.xticks(rotation=45)
+                st.pyplot(fig)
+                plt.close()
+                
+                # Descriptive statistics
+                st.markdown("#### Descriptive Statistics")
                 st.dataframe(df.describe(), use_container_width=True)
+                
+                # Download options
+                if st.download_button("📥 Download Quality Report", 
+                                     data=df.describe().to_csv(), 
+                                     file_name="data_quality_report.csv",
+                                     mime="text/csv"):
+                    st.success("Report downloaded!")
     
-    # ==================== PREPROCESSING ====================
+    # ==================== PREPROCESSING PAGE ====================
     elif section == "🔧 Preprocessing":
         st.markdown('<p class="section-header">🔧 Data Preprocessing</p>', unsafe_allow_html=True)
+        
         if st.session_state.data is None: 
             st.warning("⚠️ Please upload data first!")
             return
@@ -656,122 +1217,211 @@ with home_tab2:
         df = st.session_state.data.copy()
         
         p1, p2, p3, p4, p5 = st.tabs([
-            "📏 Feature Scaling", "🔄 Categorical Encoding", 
-            "🎯 Outlier Handling", "📊 Skewness & Transform", "📋 Summary"
+            "📏 Feature Scaling", 
+            "🔄 Categorical Encoding", 
+            "🎯 Outlier Handling", 
+            "📊 Skewness & Transform", 
+            "📋 Summary"
         ])
         
         with p1:
-            st.markdown("### 📏 Perform Feature Scaling")
-            numerical_cols = ['MP_Count_per_L', 'Risk_Score', 'Microplastic_Size_mm_midpoint', 'Density_midpoint']
-            available_cols = [col for col in numerical_cols if col in df.columns]
+            st.markdown("### 📏 Feature Scaling")
+            st.markdown("Scale numerical features to have mean=0 and variance=1")
             
-            if len(available_cols) == 0:
-                st.error(f"None of the required columns found.")
+            numerical_cols = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
+            numerical_cols = [c for c in numerical_cols if 'ID' not in c and 'Sample' not in c]
+            
+            if len(numerical_cols) == 0:
+                st.warning("No numerical columns found for scaling")
             else:
-                st.markdown(f"**Columns to be scaled:** {', '.join(available_cols)}")
-                scaler = StandardScaler()
-                df[available_cols] = scaler.fit_transform(df[available_cols])
-                st.session_state.processed_data = df
-                st.session_state.scaler = scaler
-                st.session_state.scaled_columns = available_cols
-                st.success(f"✅ Successfully scaled {len(available_cols)} columns!")
-                st.markdown("First 5 rows of scaled numerical data:")
-                st.dataframe(df[available_cols].head())
+                selected_cols = st.multiselect(
+                    "Select columns to scale:",
+                    numerical_cols,
+                    default=numerical_cols[:5] if len(numerical_cols) > 5 else numerical_cols
+                )
+                
+                if selected_cols and st.button("Apply Scaling", key="scale_btn"):
+                    scaler = StandardScaler()
+                    df[selected_cols] = scaler.fit_transform(df[selected_cols])
+                    st.session_state.processed_data = df
+                    st.session_state.scaler = scaler
+                    st.session_state.scaled_columns = selected_cols
+                    st.success(f"✅ Successfully scaled {len(selected_cols)} columns!")
+                    
+                    st.markdown("**Preview of scaled data:**")
+                    st.dataframe(df[selected_cols].head())
+                    
+                    # Show scaling statistics
+                    st.markdown("**Scaling Statistics:**")
+                    stats_df = pd.DataFrame({
+                        'Column': selected_cols,
+                        'Mean Before': [0] * len(selected_cols),  # After scaling
+                        'Std Before': [1] * len(selected_cols)   # After scaling
+                    })
+                    st.dataframe(stats_df, hide_index=True)
         
         with p2:
-            st.markdown("### 🔄 Encode Categorical Variables")
-            categorical_cols = ['Location', 'Shape', 'Polymer_Type', 'pH', 'Salinity', 
-                               'Industrial_Activity', 'Population_Density', 'Risk_Type', 
-                               'Risk_Level', 'Author', 'Source']
-            available_cats = [col for col in categorical_cols if col in df.columns]
+            st.markdown("### 🔄 Categorical Encoding")
+            st.markdown("Convert categorical variables to numerical using one-hot encoding")
             
-            if len(available_cats) == 0:
-                st.warning("None of the specified categorical columns found.")
+            categorical_cols = df.select_dtypes(include=['object']).columns.tolist()
+            categorical_cols = [c for c in categorical_cols if 'ID' not in c and 'Sample' not in c]
+            
+            if len(categorical_cols) == 0:
+                st.info("No categorical columns found for encoding")
             else:
-                st.markdown(f"**Categorical columns to encode ({len(available_cats)}):** {', '.join(available_cats)}")
-                df_encoded = pd.get_dummies(df, columns=available_cats, drop_first=False)
-                st.session_state.processed_data = df_encoded
-                st.session_state.encoded_data = df_encoded
-                st.session_state.encoded_shape = df_encoded.shape
-                st.success(f"✅ One-hot encoding applied! New shape: {df_encoded.shape}")
-                st.markdown("First 5 rows of the DataFrame after one-hot encoding:")
-                st.dataframe(df_encoded.head())
+                selected_cats = st.multiselect(
+                    "Select categorical columns to encode:",
+                    categorical_cols,
+                    default=categorical_cols
+                )
+                
+                if selected_cats and st.button("Apply Encoding", key="encode_btn"):
+                    df_encoded = pd.get_dummies(df, columns=selected_cats, drop_first=False)
+                    st.session_state.processed_data = df_encoded
+                    st.session_state.encoded_data = df_encoded
+                    st.session_state.encoded_shape = df_encoded.shape
+                    
+                    st.success(f"✅ One-hot encoding applied! Shape: {df.shape} → {df_encoded.shape}")
+                    st.info(f"Added {df_encoded.shape[1] - df.shape[1]} new columns")
+                    
+                    st.markdown("**Preview of encoded data:**")
+                    st.dataframe(df_encoded.head())
         
         with p3:
-            st.markdown("### 🎯 Address Outliers in Numerical Columns")
+            st.markdown("### 🎯 Outlier Handling")
             st.markdown("""
             <div class='outlier-box outlier-before'>
-            <strong>📌 Method:</strong> IQR method<br>
+            <strong>📌 Method:</strong> Interquartile Range (IQR)<br>
             <strong>Formula:</strong> Lower bound = Q1 - 1.5×IQR, Upper bound = Q3 + 1.5×IQR
             </div>
             """, unsafe_allow_html=True)
             
-            nums = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
-            cols_out = [c for c in nums if 'ID' not in c and 'Sample' not in c]
+            numerical_cols = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
+            numerical_cols = [c for c in numerical_cols if 'ID' not in c and 'Sample' not in c]
             
-            if len(cols_out) > 0:
-                default_cols = ['MP_Count_per_L', 'Risk_Score', 'Microplastic_Size_mm_midpoint', 'Density_midpoint']
-                available_defaults = [c for c in default_cols if c in cols_out]
-                selected_cols = available_defaults if available_defaults else cols_out[:4]
+            if len(numerical_cols) == 0:
+                st.warning("No numerical columns for outlier detection")
+            else:
+                selected_cols = st.multiselect(
+                    "Select columns for outlier handling:",
+                    numerical_cols,
+                    default=numerical_cols[:5] if len(numerical_cols) > 5 else numerical_cols
+                )
                 
-                st.markdown("#### Current Outlier Detection")
-                outlier_info = detect_outliers_detailed(df, selected_cols)
-                outlier_summary = []
-                for col, info in outlier_info.items():
-                    outlier_summary.append({
-                        'Column': col, 'Outliers': info['outlier_count'],
-                        '%': f"{info['outlier_percentage']:.1f}%",
-                        'Lower Bound': f"{info['lower_bound']:.4f}",
-                        'Upper Bound': f"{info['upper_bound']:.4f}"
-                    })
-                st.dataframe(pd.DataFrame(outlier_summary), use_container_width=True, hide_index=True)
-                
-                df_capped, stats_before, stats_after, outlier_counts = cap_outliers_iqr_detailed(df, selected_cols)
-                st.session_state.processed_data = df_capped
-                st.session_state.outlier_columns_processed = selected_cols
-                st.success(f"✅ Successfully capped outliers in {len(selected_cols)} columns!")
+                if selected_cols:
+                    # Show current outliers
+                    outlier_info = detect_outliers_detailed(df, selected_cols)
+                    outlier_summary = []
+                    for col, info in outlier_info.items():
+                        outlier_summary.append({
+                            'Column': col,
+                            'Outliers': info['outlier_count'],
+                            '%': f"{info['outlier_percentage']:.1f}%",
+                            'Lower Bound': f"{info['lower_bound']:.4f}",
+                            'Upper Bound': f"{info['upper_bound']:.4f}"
+                        })
+                    
+                    if outlier_summary:
+                        st.markdown("**Current Outlier Summary:**")
+                        st.dataframe(pd.DataFrame(outlier_summary), use_container_width=True, hide_index=True)
+                    
+                    if st.button("Cap Outliers", key="outlier_btn"):
+                        df_capped, stats_before, stats_after, outlier_counts = cap_outliers_iqr_detailed(df, selected_cols)
+                        st.session_state.processed_data = df_capped
+                        st.session_state.outlier_columns_processed = selected_cols
+                        st.session_state.outlier_stats_before = stats_before
+                        st.session_state.outlier_stats_after = stats_after
+                        
+                        st.success(f"✅ Successfully capped outliers in {len(selected_cols)} columns!")
+                        
+                        # Show comparison
+                        st.markdown("**Before vs After Comparison:**")
+                        comp_table = create_outlier_summary_table(stats_before, stats_after, selected_cols)
+                        st.dataframe(comp_table, use_container_width=True, hide_index=True)
         
         with p4:
             st.markdown("### 📊 Skewness Analysis & Log Transform")
-            numerical_cols = ['MP_Count_per_L', 'Risk_Score', 'Microplastic_Size_mm_midpoint', 'Density_midpoint']
-            available_cols = [col for col in numerical_cols if col in df.columns]
+            st.markdown("Analyze and reduce skewness in numerical features")
             
-            if len(available_cols) == 0:
-                st.warning("None of the specified numerical columns found.")
+            numerical_cols = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
+            numerical_cols = [c for c in numerical_cols if 'ID' not in c and 'Sample' not in c]
+            
+            if len(numerical_cols) == 0:
+                st.warning("No numerical columns for skewness analysis")
             else:
-                skewness_before = df[available_cols].skew()
-                skew_before_df = pd.DataFrame({'Column': skewness_before.index, 'Skewness': skewness_before.values})
-                st.markdown("**Skewness before transformation:**")
-                st.dataframe(skew_before_df, use_container_width=True, hide_index=True)
+                # Skewness analysis
+                skew_info = analyze_skewness(df, numerical_cols)
+                st.markdown("**Skewness Analysis:**")
+                st.dataframe(skew_info, use_container_width=True, hide_index=True)
                 
-                df_transformed = df.copy()
-                for col in available_cols:
-                    shift = abs(df_transformed[col].min()) + 1 if df_transformed[col].min() <= 0 else 0
-                    df_transformed[col] = np.log1p(df_transformed[col] + shift)
-                st.session_state.processed_data = df_transformed
+                # Identify skewed columns
+                skewed_cols = skew_info[skew_info['Skewed'] == 'Yes']['Column'].tolist()
                 
-                skewness_after = df_transformed[available_cols].skew()
-                skew_after_df = pd.DataFrame({'Column': skewness_after.index, 'Skewness': skewness_after.values})
-                st.success("✅ Log transform applied!")
-                st.markdown("**Skewness after transformation:**")
-                st.dataframe(skew_after_df, use_container_width=True, hide_index=True)
+                if len(skewed_cols) == 0:
+                    st.success("✅ No highly skewed columns found!")
+                else:
+                    st.warning(f"Found {len(skewed_cols)} skewed columns")
+                    
+                    selected_skewed = st.multiselect(
+                        "Select columns for log transform:",
+                        skewed_cols,
+                        default=skewed_cols[:5] if len(skewed_cols) > 5 else skewed_cols
+                    )
+                    
+                    if selected_skewed and st.button("Apply Log Transform", key="log_btn"):
+                        df_transformed = apply_log_transform(df, selected_skewed)
+                        st.session_state.processed_data = df_transformed
+                        
+                        # Show comparison
+                        skew_after = pd.DataFrame({
+                            'Column': selected_skewed,
+                            'Skewness Before': df[selected_skewed].skew().values,
+                            'Skewness After': df_transformed[selected_skewed].skew().values
+                        }).round(4)
+                        
+                        st.markdown("**Skewness Comparison:**")
+                        st.dataframe(skew_after, use_container_width=True, hide_index=True)
+                        st.success("✅ Log transform applied!")
         
         with p5:
             st.markdown("### 📋 Preprocessing Summary")
-            actions = []
-            if st.session_state.get('scaled_columns') is not None: actions.append("✅ Feature Scaling applied")
-            if st.session_state.get('encoded_data') is not None: actions.append("✅ Categorical Encoding applied")
-            if len(st.session_state.get('outlier_columns_processed', [])) > 0: actions.append(f"✅ Outliers handled")
-            if actions:
-                for a in actions: st.markdown(a)
+            
+            summary_items = []
+            
+            if st.session_state.get('scaled_columns') is not None:
+                summary_items.append({
+                    'Step': 'Feature Scaling',
+                    'Status': '✅',
+                    'Details': f"Scaled {len(st.session_state.scaled_columns)} columns"
+                })
+            
+            if st.session_state.get('encoded_data') is not None:
+                summary_items.append({
+                    'Step': 'Categorical Encoding',
+                    'Status': '✅',
+                    'Details': f"Shape: {st.session_state.encoded_shape}"
+                })
+            
+            if len(st.session_state.get('outlier_columns_processed', [])) > 0:
+                summary_items.append({
+                    'Step': 'Outlier Handling',
+                    'Status': '✅',
+                    'Details': f"Processed {len(st.session_state.outlier_columns_processed)} columns"
+                })
+            
+            if summary_items:
+                st.dataframe(pd.DataFrame(summary_items), use_container_width=True, hide_index=True)
+                
                 current_data = st.session_state.processed_data if st.session_state.processed_data is not None else df
-                st.markdown(f"**Current Data Shape:** {current_data.shape}")
+                st.metric("Current Data Shape", f"{current_data.shape[0]} rows × {current_data.shape[1]} columns")
             else:
                 st.info("No preprocessing steps applied yet.")
     
-    # ==================== FEATURE SELECTION ====================
+    # ==================== FEATURE SELECTION PAGE ====================
     elif section == "🛠️ Feature Selection & Relevance":
         st.markdown('<p class="section-header">🛠️ Feature Selection & Relevance</p>', unsafe_allow_html=True)
+        
         data = st.session_state.processed_data if st.session_state.processed_data is not None else st.session_state.data
         if data is None: 
             st.warning("⚠️ Load data first!")
@@ -779,206 +1429,285 @@ with home_tab2:
         
         df = data.copy()
         
-        st.markdown("### 🎯 Understand the Goal")
-        st.markdown("Clarify the target variable for classification/prediction and the type of model you intend to build.")
+        st.markdown("### 🎯 Target Variable Selection")
         
         col1, col2 = st.columns(2)
         with col1:
-            target = st.selectbox("Select Target Variable:", df.columns.tolist(),
-                                 index=df.columns.tolist().index('Risk_Type') if 'Risk_Type' in df.columns else 0)
+            target = st.selectbox(
+                "Select Target Variable:", 
+                df.columns.tolist(),
+                index=df.columns.tolist().index('Risk_Type') if 'Risk_Type' in df.columns else 0
+            )
         with col2:
-            model_type = st.selectbox("Select Model Type:", ["Classification", "Regression"],
-                                     index=0 if df[target].dtype == 'object' or df[target].nunique() < 10 else 1)
-        
-        st.markdown("---")
-        st.markdown(f"**Target Variable:** `{target}`")
-        
-        if df[target].dtype == 'object' or df[target].nunique() < 10:
-            st.markdown(f"**Type:** Categorical ({df[target].nunique()} unique values)")
-            st.markdown(f"**Categories:** {', '.join(df[target].dropna().unique().astype(str))}")
-            st.markdown(f"**Model Type:** Classification")
-        else:
-            st.markdown(f"**Type:** Numerical")
-            try:
-                clean_target = pd.to_numeric(df[target], errors='coerce').dropna()
-                if len(clean_target) > 0:
-                    st.markdown(f"**Range:** {clean_target.min():.4f} to {clean_target.max():.4f}")
-            except:
-                pass
-            st.markdown(f"**Model Type:** {model_type}")
+            if df[target].dtype == 'object' or df[target].nunique() < 10:
+                model_type = "Classification"
+                st.info(f"**Model Type:** {model_type}")
+                st.metric("Unique Classes", df[target].nunique())
+            else:
+                model_type = st.selectbox("Model Type:", ["Classification", "Regression"])
         
         st.markdown("---")
         
-        st.markdown("### 📚 Explore Feature Selection Methods")
-        st.markdown("Discuss and select appropriate feature selection or ranking methods based on the data type and the goal.")
+        # Feature Selection Methods
+        st.markdown("### 📚 Feature Selection Methods")
         
         method_tabs = st.tabs(["📋 Overview", "🔍 Filter Methods", "🔄 Wrapper Methods", "🌲 Embedded Methods"])
         
         with method_tabs[0]:
-            st.markdown("#### Feature Selection Methods Overview")
             st.markdown("""
-            **1. Filter Methods** - Rank features based on statistical scores, fast and model-independent
-            **2. Wrapper Methods** - Evaluate feature subsets using model performance, more accurate but expensive
-            **3. Embedded Methods** - Feature selection built into model training, balance of speed and accuracy
+            #### Feature Selection Methods Overview
+            
+            **1. Filter Methods (Selected)**
+            - Mutual Information: Measures dependency between features and target
+            - Chi-Squared Test: Tests independence between categorical variables
+            - Fast and model-independent
+            
+            **2. Wrapper Methods**
+            - Recursive Feature Elimination (RFE)
+            - Forward/Backward Selection
+            - More accurate but computationally expensive
+            
+            **3. Embedded Methods (Selected)**
+            - Random Forest Feature Importance
+            - Lasso Regularization
+            - Feature selection during model training
             """)
         
         with method_tabs[1]:
             st.markdown("#### 🔍 Filter Methods")
-            st.markdown("**Selected:** Mutual Information & Chi-Squared")
-            st.success("✅ Well-suited for mixed data types and interpretability.")
+            st.success("✅ Selected: Mutual Information & Chi-Squared Test")
+            st.info("These methods are well-suited for mixed data types and provide interpretable results.")
         
         with method_tabs[2]:
             st.markdown("#### 🔄 Wrapper Methods")
-            st.markdown("**Not selected** due to computational cost with many features after encoding.")
+            st.warning("⚠️ Not selected due to computational cost with many features after encoding.")
         
         with method_tabs[3]:
             st.markdown("#### 🌲 Embedded Methods")
-            st.markdown("**Selected:** Random Forest Importance")
-            st.success("✅ Reliable feature importance for classification tasks.")
+            st.success("✅ Selected: Random Forest Importance")
+            st.info("Provides reliable feature importance for both classification and regression tasks.")
         
         st.markdown("---")
-        st.markdown("### 📈 Exploratory Data Analysis")
         
-        if 'Risk_Score' in df.columns:
-            clean = df['Risk_Score'].dropna()
-            if len(clean) > 0: 
-                st.plotly_chart(plot_distribution(df, 'Risk_Score', 'Risk Score Distribution'), use_container_width=True)
-        
-        if 'MP_Count_per_L' in df.columns and 'Risk_Score' in df.columns:
-            clean = df.dropna(subset=['MP_Count_per_L', 'Risk_Score'])
-            if not clean.empty:
-                try: 
-                    fig = px.scatter(clean, x='MP_Count_per_L', y='Risk_Score', 
-                                   color='Risk_Level' if 'Risk_Level' in clean.columns else None, 
-                                   trendline='ols', title='MP Count vs Risk Score')
-                except: 
-                    fig = px.scatter(clean, x='MP_Count_per_L', y='Risk_Score', title='MP Count vs Risk Score')
-                st.plotly_chart(fig, use_container_width=True)
-        
-        st.markdown("---")
+        # Feature Selection Execution
         st.markdown("### 🎯 Apply Feature Selection")
         
-        st.markdown("""
-        <div style='background-color: #d4edda; padding: 1rem; border-radius: 8px;'>
-        <strong>✅ Selected Methods:</strong> Mutual Information, Chi-Squared, Random Forest Importance
-        </div>
-        """, unsafe_allow_html=True)
+        numerical_cols = df.select_dtypes(include=['float64', 'int64', 'int32']).columns.tolist()
+        if target in numerical_cols:
+            numerical_cols.remove(target)
         
-        st.markdown("")
-        nums = df.select_dtypes(include=['float64', 'int64', 'int32']).columns.tolist()
-        if target in nums: nums.remove(target)
-        
-        if st.button("🚀 Calculate Feature Importance", type="primary", use_container_width=True):
-            with st.spinner('Calculating...'):
-                X = df[nums].copy()
-                y = df[target].copy()
-                mask = y.notna()
-                X = X[mask]
-                y = y[mask]
-                X = X.fillna(X.median())
-                if y.dtype == 'object': 
-                    y = LabelEncoder().fit_transform(y)
-                else:
-                    y = pd.qcut(y, q=4, labels=False, duplicates='drop')
-                X = X.dropna(axis=1, how='any')
-                
-                # Calculate scores as Series
-                mi_scores = mutual_info_classif(X, y, random_state=42)
-                mi_series = pd.Series(mi_scores, index=X.columns).sort_values(ascending=False)
-                
-                X_chi2 = X - X.min() + 1
-                chi2_scores, _ = chi2(X_chi2, y)
-                chi2_series = pd.Series(chi2_scores, index=X.columns).sort_values(ascending=False)
-                
-                rf = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
-                rf.fit(X, y)
-                rf_series = pd.Series(rf.feature_importances_, index=X.columns).sort_values(ascending=False)
-                
-                st.session_state.selected_features = rf_series.head(10).index.tolist()
-                
-                ft1, ft2, ft3 = st.tabs(["📊 Mutual Information", "🔢 Chi-squared", "🌲 Random Forest"])
-                
-                with ft1:
-                    st.markdown("**Top 20 features based on Mutual Information:**")
-                    st.text("Mutual Information Scores\n" + mi_series.head(20).to_string())
-                
-                with ft2:
-                    st.markdown("**Top 20 features based on Chi-squared Test:**")
-                    st.text("Chi-squared Scores\n" + chi2_series.head(20).to_string())
-                
-                with ft3:
-                    st.markdown("**Top 20 features based on RandomForest Feature Importances:**")
-                    st.text("Feature Importances\n" + rf_series.head(20).to_string())
-                
-                st.success("✅ Feature selection completed!")
+        if len(numerical_cols) == 0:
+            st.error("No numerical features available for selection!")
+        else:
+            st.markdown(f"**Available numerical features:** {len(numerical_cols)}")
+            
+            if st.button("🚀 Calculate Feature Importance", type="primary", use_container_width=True):
+                with st.spinner('Calculating feature importance...'):
+                    try:
+                        X = df[numerical_cols].copy()
+                        y = df[target].copy()
+                        
+                        # Clean data
+                        mask = y.notna()
+                        X = X[mask]
+                        y = y[mask]
+                        X = X.fillna(X.median())
+                        
+                        # Encode target if needed
+                        if y.dtype == 'object':
+                            y = LabelEncoder().fit_transform(y)
+                        elif model_type == "Classification":
+                            y = pd.qcut(y, q=4, labels=False, duplicates='drop')
+                        
+                        # Calculate scores
+                        mi_scores = calculate_mutual_info(X, y)
+                        chi2_scores = calculate_chi2(X, y)
+                        rf_scores = calculate_rf_importance(X, y)
+                        
+                        # Store top 10 features
+                        st.session_state.selected_features = rf_scores.head(10).index.tolist()
+                        st.session_state.mutual_info = mi_scores
+                        st.session_state.chi2_scores = chi2_scores
+                        st.session_state.feature_importance = rf_scores
+                        
+                        # Display results
+                        ft1, ft2, ft3 = st.tabs([
+                            "📊 Mutual Information", 
+                            "🔢 Chi-squared", 
+                            "🌲 Random Forest"
+                        ])
+                        
+                        with ft1:
+                            st.markdown("**Top 20 Features - Mutual Information:**")
+                            st.dataframe(
+                                pd.DataFrame({
+                                    'Feature': mi_scores.head(20).index,
+                                    'Score': mi_scores.head(20).values.round(4)
+                                }),
+                                use_container_width=True,
+                                hide_index=True
+                            )
+                        
+                        with ft2:
+                            st.markdown("**Top 20 Features - Chi-squared:**")
+                            st.dataframe(
+                                pd.DataFrame({
+                                    'Feature': chi2_scores.head(20).index,
+                                    'Score': chi2_scores.head(20).values.round(4)
+                                }),
+                                use_container_width=True,
+                                hide_index=True
+                            )
+                        
+                        with ft3:
+                            st.markdown("**Top 20 Features - Random Forest:**")
+                            st.dataframe(
+                                pd.DataFrame({
+                                    'Feature': rf_scores.head(20).index,
+                                    'Importance': rf_scores.head(20).values.round(4)
+                                }),
+                                use_container_width=True,
+                                hide_index=True
+                            )
+                        
+                        st.success(f"✅ Feature selection completed! Top 10 features selected for modeling.")
+                        
+                    except Exception as e:
+                        st.error(f"Feature selection failed: {str(e)}")
     
-    # ==================== MODELING ====================
+    # ==================== MODELING PAGE ====================
     elif section == "🤖 Modeling":
         st.markdown('<p class="section-header">🤖 Model Training</p>', unsafe_allow_html=True)
+        
         data = st.session_state.processed_data if st.session_state.processed_data is not None else st.session_state.data
         if data is None: 
             st.warning("⚠️ Load data first!")
             return
         
-        df = data
-        target = st.selectbox("Target Variable", df.columns.tolist(), key='train_target')
-        all_f = [c for c in df.columns if c != target]
-        default = st.session_state.get('selected_features', df.select_dtypes(include=['float64', 'int64']).columns.tolist()[:5])
-        default = [f for f in default if f in all_f]
-        features = st.multiselect("Features", all_f, default=default)
+        df = data.copy()
         
-        c1, c2 = st.columns(2)
-        with c1: ts = st.slider("Test Size", 0.1, 0.5, 0.2)
-        with c2: use_smote = st.checkbox("Use SMOTE", value=True)
+        # Model configuration
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            target = st.selectbox("Target Variable", df.columns.tolist(), key='train_target')
+        with col2:
+            all_features = [c for c in df.columns if c != target]
+            default_features = st.session_state.get('selected_features', 
+                                                   df.select_dtypes(include=['float64', 'int64']).columns.tolist()[:5])
+            default_features = [f for f in default_features if f in all_features]
+            features = st.multiselect("Features", all_features, default=default_features)
+        with col3:
+            test_size = st.slider("Test Size", 0.1, 0.5, 0.2)
+            use_smote = st.checkbox("Use SMOTE", value=True)
+        
+        st.markdown("---")
         
         if st.button("🚀 Train Models", type="primary", use_container_width=True):
             if len(features) == 0: 
                 st.error("Select at least one feature!")
-                return
-            
-            X = df[features].select_dtypes(include=['float64', 'int64', 'int32'])
-            y = df[target]
-            mask = y.notna()
-            X = X[mask]
-            y = y[mask]
-            if y.dtype == 'object': y = LabelEncoder().fit_transform(y)
-            X = X.fillna(X.median())
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=ts, random_state=42)
-            
-            if use_smote:
-                tc = pd.Series(y_train).value_counts()
-                if tc.min() >= 2:
-                    try: X_train, y_train = SMOTE(random_state=42, k_neighbors=min(5, tc.min()-1)).fit_resample(X_train, y_train)
-                    except: pass
-            
-            models = {}
-            try:
-                lr = LogisticRegression(random_state=42, max_iter=500, class_weight='balanced', n_jobs=-1)
-                lr.fit(X_train, y_train)
-                models['Logistic Regression'] = lr
-            except: pass
-            try:
-                rf = RandomForestClassifier(n_estimators=50, random_state=42, class_weight='balanced', n_jobs=-1)
-                rf.fit(X_train, y_train)
-                models['RandomForestClassifier'] = rf
-            except: pass
-            try:
-                gb = GradientBoostingClassifier(n_estimators=50, random_state=42)
-                gb.fit(X_train, y_train)
-                models['GradientBoostingClassifier'] = gb
-            except: pass
-            
-            if models:
-                st.session_state.models = models
-                st.session_state.trained = True
-                st.success(f"✅ {len(models)} models trained!")
-                for name, model in models.items():
-                    y_pred = model.predict(X_test)
-                    st.markdown(f"**{name}:** Accuracy={accuracy_score(y_test, y_pred):.4f} | F1={f1_score(y_test, y_pred, average='weighted'):.4f}")
+            else:
+                with st.spinner('Training models...'):
+                    try:
+                        X = df[features].select_dtypes(include=['float64', 'int64', 'int32'])
+                        y = df[target]
+                        
+                        # Clean data
+                        mask = y.notna()
+                        X = X[mask]
+                        y = y[mask]
+                        
+                        if y.dtype == 'object':
+                            y = LabelEncoder().fit_transform(y)
+                        
+                        X = X.fillna(X.median())
+                        
+                        # Split data
+                        X_train, X_test, y_train, y_test = train_test_split(
+                            X, y, test_size=test_size, random_state=42, stratify=y if len(np.unique(y)) > 1 else None
+                        )
+                        
+                        # Apply SMOTE
+                        if use_smote:
+                            class_counts = pd.Series(y_train).value_counts()
+                            if class_counts.min() >= 2:
+                                try:
+                                    smote = SMOTE(random_state=42, k_neighbors=min(5, class_counts.min()-1))
+                                    X_train, y_train = smote.fit_resample(X_train, y_train)
+                                    st.success(f"✅ SMOTE applied! Training samples: {len(X_train)}")
+                                except Exception as e:
+                                    st.warning(f"SMOTE failed: {str(e)}")
+                        
+                        # Train models
+                        models = {}
+                        
+                        # Logistic Regression
+                        try:
+                            lr = LogisticRegression(random_state=42, max_iter=500, class_weight='balanced', n_jobs=-1)
+                            lr.fit(X_train, y_train)
+                            models['Logistic Regression'] = lr
+                        except Exception as e:
+                            st.warning(f"Logistic Regression failed: {str(e)}")
+                        
+                        # Random Forest
+                        try:
+                            rf = RandomForestClassifier(n_estimators=50, random_state=42, class_weight='balanced', n_jobs=-1)
+                            rf.fit(X_train, y_train)
+                            models['Random Forest'] = rf
+                        except Exception as e:
+                            st.warning(f"Random Forest failed: {str(e)}")
+                        
+                        # Gradient Boosting
+                        try:
+                            gb = GradientBoostingClassifier(n_estimators=50, random_state=42)
+                            gb.fit(X_train, y_train)
+                            models['Gradient Boosting'] = gb
+                        except Exception as e:
+                            st.warning(f"Gradient Boosting failed: {str(e)}")
+                        
+                        if models:
+                            st.session_state.models = models
+                            st.session_state.trained = True
+                            
+                            st.markdown("### 📊 Model Performance")
+                            
+                            results_list = []
+                            for name, model in models.items():
+                                y_pred = model.predict(X_test)
+                                results_list.append({
+                                    'Model': name,
+                                    'Accuracy': f"{accuracy_score(y_test, y_pred):.4f}",
+                                    'Precision': f"{precision_score(y_test, y_pred, average='weighted', zero_division=0):.4f}",
+                                    'Recall': f"{recall_score(y_test, y_pred, average='weighted', zero_division=0):.4f}",
+                                    'F1 Score': f"{f1_score(y_test, y_pred, average='weighted', zero_division=0):.4f}"
+                                })
+                            
+                            results_df = pd.DataFrame(results_list)
+                            st.dataframe(results_df, use_container_width=True, hide_index=True)
+                            
+                            # Best model
+                            best_model = results_df.iloc[results_df['F1 Score'].astype(float).idxmax()]
+                            st.success(f"🏆 Best Model: **{best_model['Model']}** with F1 Score: {best_model['F1 Score']}")
+                            
+                            # Feature importance for Random Forest
+                            if 'Random Forest' in models:
+                                st.markdown("### 🌲 Random Forest Feature Importance")
+                                importances = models['Random Forest'].feature_importances_
+                                feat_imp = pd.DataFrame({
+                                    'Feature': features,
+                                    'Importance': importances
+                                }).sort_values('Importance', ascending=False)
+                                
+                                fig = px.bar(feat_imp, x='Feature', y='Importance', 
+                                           title='Feature Importance (Random Forest)')
+                                st.plotly_chart(fig, use_container_width=True)
+                    
+                    except Exception as e:
+                        st.error(f"Model training failed: {str(e)}")
     
-    # ==================== CROSS VALIDATION & EVALUATION ====================
+    # ==================== CROSS VALIDATION PAGE ====================
     elif section == "📊 Cross Validation & Evaluation":
         st.markdown('<p class="section-header">📊 Cross Validation & Model Evaluation</p>', unsafe_allow_html=True)
+        
         data = st.session_state.processed_data if st.session_state.processed_data is not None else st.session_state.data
         if data is None: 
             st.warning("⚠️ Load data first!")
@@ -987,117 +1716,199 @@ with home_tab2:
         df = data.copy()
         
         et1, et2, et3, et4 = st.tabs([
-            "📊 Evaluate Models", "📊 Compare Both Targets", 
-            "🔄 Cross Validation", "📋 Pipeline Summary"
+            "📊 Evaluate Models", 
+            "📊 Compare Targets", 
+            "🔄 Cross Validation", 
+            "📋 Pipeline Summary"
         ])
         
         with et1:
             st.markdown("### 📊 Evaluate Models on Risk_Type")
-            tc = 'Risk_Type'
-            if tc not in df.columns: 
-                st.error(f"'{tc}' column not found!")
-            elif st.button("🚀 Evaluate Models", type="primary", key="eval"):
-                with st.spinner('Evaluating...'):
-                    results, info = train_and_evaluate_detailed(df, tc)
-                    st.session_state.evaluation_ran = True
-                if results:
-                    md = [{'Model': n, 'Accuracy': r['accuracy'], 'Precision': r['precision'], 
-                          'Recall': r['recall'], 'F1': r['f1_score']} for n, r in results.items()]
-                    mdf = pd.DataFrame(md)
-                    st.dataframe(mdf, use_container_width=True)
-                    st.plotly_chart(px.bar(mdf, x='Model', y=['Accuracy', 'Precision', 'Recall', 'F1'], 
-                                          barmode='group', height=400), use_container_width=True)
+            
+            if 'Risk_Type' not in df.columns:
+                st.error("'Risk_Type' column not found!")
+            else:
+                if st.button("🚀 Evaluate Models", type="primary", key="eval"):
+                    with st.spinner('Evaluating models...'):
+                        results, info = train_and_evaluate_detailed(df, 'Risk_Type')
+                        st.session_state.evaluation_ran = True
+                    
+                    if results:
+                        results_list = [
+                            {'Model': name, **metrics} 
+                            for name, metrics in results.items()
+                        ]
+                        results_df = pd.DataFrame(results_list)
+                        
+                        st.dataframe(results_df, use_container_width=True, hide_index=True)
+                        
+                        # Performance visualization
+                        fig = px.bar(
+                            results_df.melt(id_vars='Model', var_name='Metric', value_name='Score'),
+                            x='Model', y='Score', color='Metric',
+                            barmode='group', height=400
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
         
         with et2:
-            st.markdown("### 📊 Compare Models on Both Targets")
+            st.markdown("### 📊 Compare Models on Both Risk_Type and Risk_Level")
+            
             if st.button("🚀 Compare Targets", type="primary", key="cmp"):
-                all_c = {}
-                for tc in ['Risk_Type', 'Risk_Level']:
-                    if tc in df.columns:
-                        with st.spinner(f'Processing {tc}...'):
-                            results, _ = train_and_evaluate_detailed(df, tc)
-                            all_c[tc] = results
+                all_results = {}
+                
+                for target in ['Risk_Type', 'Risk_Level']:
+                    if target in df.columns:
+                        with st.spinner(f'Processing {target}...'):
+                            results, _ = train_and_evaluate_detailed(df, target)
+                            all_results[target] = results
+                
                 st.session_state.comparison_ran = True
-                for tc, results in all_c.items():
-                    st.markdown(f"## {tc}")
+                
+                for target, results in all_results.items():
+                    st.markdown(f"### Target: {target}")
                     if results:
-                        md = [{'Model': n, 'Accuracy': r['accuracy'], 'F1': r['f1_score']} for n, r in results.items()]
-                        st.dataframe(pd.DataFrame(md), use_container_width=True, hide_index=True)
-                        st.markdown("---")
+                        results_list = [
+                            {'Model': name, 'Accuracy': metrics['accuracy'], 'F1': metrics['f1_score']}
+                            for name, metrics in results.items()
+                        ]
+                        st.dataframe(pd.DataFrame(results_list), use_container_width=True, hide_index=True)
+                    st.markdown("---")
         
         with et3:
             st.markdown("### 🔄 Cross Validation")
-            target = st.selectbox("Target for CV", df.columns.tolist(), 
-                                 index=df.columns.tolist().index('Risk_Type') if 'Risk_Type' in df.columns else 0)
-            nums = df.select_dtypes(include=['float64', 'int64', 'int32']).columns.tolist()
-            if target in nums: nums.remove(target)
-            folds = st.slider("CV Folds", 3, 10, 5)
+            
+            target = st.selectbox(
+                "Target for CV", 
+                df.columns.tolist(),
+                index=df.columns.tolist().index('Risk_Type') if 'Risk_Type' in df.columns else 0
+            )
+            
+            numerical_cols = df.select_dtypes(include=['float64', 'int64', 'int32']).columns.tolist()
+            if target in numerical_cols:
+                numerical_cols.remove(target)
+            
+            folds = st.slider("Number of CV Folds", 3, 10, 5)
             
             if st.button("🔄 Run Cross Validation", type="primary", key="cv"):
-                X = df[nums].copy()
-                y = df[target].copy()
-                mask = y.notna()
-                X = X[mask]
-                y = y[mask]
-                if y.dtype == 'object': y = LabelEncoder().fit_transform(y)
-                X = X.fillna(X.median())
-                
-                cv_models = {
-                    'Logistic Regression': LogisticRegression(random_state=42, max_iter=500, class_weight='balanced', n_jobs=-1),
-                    'Random Forest': RandomForestClassifier(n_estimators=50, random_state=42, class_weight='balanced', n_jobs=-1),
-                    'Gradient Boosting': GradientBoostingClassifier(n_estimators=50, random_state=42)
-                }
-                cv = StratifiedKFold(n_splits=folds, shuffle=True, random_state=42)
-                cv_res = []
-                all_s = {}
-                for nm, md in cv_models.items():
+                with st.spinner('Running cross validation...'):
                     try:
-                        acc = cross_val_score(md, X, y, cv=cv, scoring='accuracy', n_jobs=-1)
-                        f1 = cross_val_score(md, X, y, cv=cv, scoring='f1_weighted', n_jobs=-1)
-                        all_s[nm] = f1
-                        cv_res.append({'Model': nm, 'Mean Accuracy': round(acc.mean(), 4),
-                                      'Std Accuracy': round(acc.std(), 4), 'Mean F1': round(f1.mean(), 4),
-                                      'Std F1': round(f1.std(), 4)})
-                    except: pass
-                st.session_state.cv_ran = True
-                if cv_res:
-                    cv_df = pd.DataFrame(cv_res)
-                    st.dataframe(cv_df, use_container_width=True, hide_index=True)
-                    best = cv_df.loc[cv_df['Mean F1'].idxmax()]
-                    st.success(f"🏆 Best Model: **{best['Model']}** (F1: {best['Mean F1']:.4f})")
+                        X = df[numerical_cols].copy()
+                        y = df[target].copy()
+                        
+                        mask = y.notna()
+                        X = X[mask]
+                        y = y[mask]
+                        
+                        if y.dtype == 'object':
+                            y = LabelEncoder().fit_transform(y)
+                        
+                        X = X.fillna(X.median())
+                        
+                        models = {
+                            'Logistic Regression': LogisticRegression(random_state=42, max_iter=500, class_weight='balanced', n_jobs=-1),
+                            'Random Forest': RandomForestClassifier(n_estimators=50, random_state=42, class_weight='balanced', n_jobs=-1),
+                            'Gradient Boosting': GradientBoostingClassifier(n_estimators=50, random_state=42)
+                        }
+                        
+                        cv = StratifiedKFold(n_splits=folds, shuffle=True, random_state=42)
+                        cv_results = []
+                        
+                        for name, model in models.items():
+                            try:
+                                acc_scores = cross_val_score(model, X, y, cv=cv, scoring='accuracy', n_jobs=-1)
+                                f1_scores = cross_val_score(model, X, y, cv=cv, scoring='f1_weighted', n_jobs=-1)
+                                
+                                cv_results.append({
+                                    'Model': name,
+                                    'Mean Accuracy': f"{acc_scores.mean():.4f}",
+                                    'Std Accuracy': f"{acc_scores.std():.4f}",
+                                    'Mean F1': f"{f1_scores.mean():.4f}",
+                                    'Std F1': f"{f1_scores.std():.4f}"
+                                })
+                            except Exception as e:
+                                st.warning(f"{name} CV failed: {str(e)}")
+                        
+                        if cv_results:
+                            cv_df = pd.DataFrame(cv_results)
+                            st.dataframe(cv_df, use_container_width=True, hide_index=True)
+                            
+                            best_model = cv_df.iloc[cv_df['Mean F1'].astype(float).idxmax()]
+                            st.success(f"🏆 Best Model: **{best_model['Model']}** (F1: {best_model['Mean F1']})")
+                            
+                            st.session_state.cv_ran = True
+                    
+                    except Exception as e:
+                        st.error(f"Cross validation failed: {str(e)}")
         
         with et4:
             st.markdown("### 📋 Complete Pipeline Summary")
+            
             if st.button("🔄 Generate Pipeline Summary", type="primary", key="pipe"):
-                pd_data = []
-                if st.session_state.data is not None:
-                    pd_data.append({'Stage': '1. Data Loading', 'Step': 'Dataset Loaded', 'Status': '✅',
-                                   'Details': f'{st.session_state.data.shape[0]} rows'})
-                else:
-                    pd_data.append({'Stage': '1. Data Loading', 'Step': 'Dataset', 'Status': '❌', 'Details': 'No data'})
+                pipeline_data = [
+                    {
+                        'Stage': '1. Data Loading',
+                        'Step': 'Dataset',
+                        'Status': '✅' if st.session_state.data is not None else '❌',
+                        'Details': f"{st.session_state.data.shape[0]} rows × {st.session_state.data.shape[1]} cols" 
+                                  if st.session_state.data is not None else 'No data'
+                    },
+                    {
+                        'Stage': '2. Preprocessing',
+                        'Step': 'Feature Scaling',
+                        'Status': '✅' if st.session_state.get('scaled_columns') else '⬜',
+                        'Details': f"Scaled {len(st.session_state.get('scaled_columns', []))} columns" 
+                                  if st.session_state.get('scaled_columns') else 'Not applied'
+                    },
+                    {
+                        'Stage': '2. Preprocessing',
+                        'Step': 'Categorical Encoding',
+                        'Status': '✅' if st.session_state.get('encoded_data') is not None else '⬜',
+                        'Details': f"Shape: {st.session_state.get('encoded_shape')}" 
+                                  if st.session_state.get('encoded_data') is not None else 'Not applied'
+                    },
+                    {
+                        'Stage': '2. Preprocessing',
+                        'Step': 'Outlier Handling',
+                        'Status': '✅' if len(st.session_state.get('outlier_columns_processed', [])) > 0 else '⬜',
+                        'Details': f"Processed {len(st.session_state.get('outlier_columns_processed', []))} columns"
+                                  if len(st.session_state.get('outlier_columns_processed', [])) > 0 else 'Not applied'
+                    },
+                    {
+                        'Stage': '3. Feature Selection',
+                        'Step': 'Feature Importance',
+                        'Status': '✅' if st.session_state.get('feature_importance') is not None else '⬜',
+                        'Details': 'Computed' if st.session_state.get('feature_importance') is not None else 'Not computed'
+                    },
+                    {
+                        'Stage': '4. Modeling',
+                        'Step': 'Models Trained',
+                        'Status': '✅' if st.session_state.get('trained') else '⬜',
+                        'Details': f"{len(st.session_state.get('models', {}))} models" if st.session_state.get('trained') else 'Not trained'
+                    },
+                    {
+                        'Stage': '5. Evaluation',
+                        'Step': 'Model Evaluation',
+                        'Status': '✅' if st.session_state.get('evaluation_ran') else '⬜',
+                        'Details': 'Completed' if st.session_state.get('evaluation_ran') else 'Not done'
+                    }
+                ]
                 
-                pd_data.append({'Stage': '2. Preprocessing', 'Step': 'Feature Scaling',
-                               'Status': '✅' if st.session_state.get('scaled_columns') else '⬜',
-                               'Details': 'Applied' if st.session_state.get('scaled_columns') else 'Not applied'})
-                pd_data.append({'Stage': '2. Preprocessing', 'Step': 'Categorical Encoding',
-                               'Status': '✅' if st.session_state.get('encoded_data') else '⬜',
-                               'Details': 'Applied' if st.session_state.get('encoded_data') else 'Not applied'})
-                pd_data.append({'Stage': '3. Feature Selection', 'Step': 'Feature Importance',
-                               'Status': '✅' if st.session_state.get('feature_importance') else '⬜',
-                               'Details': 'Computed' if st.session_state.get('feature_importance') else 'Not computed'})
-                pd_data.append({'Stage': '4. Modeling', 'Step': 'Models Trained',
-                               'Status': '✅' if st.session_state.get('trained') else '⬜',
-                               'Details': f'{len(st.session_state.get("models", {}))} models' if st.session_state.get('trained') else 'Not trained'})
-                pd_data.append({'Stage': '5. Evaluation', 'Step': 'Model Evaluation',
-                               'Status': '✅' if st.session_state.get('evaluation_ran') else '⬜',
-                               'Details': 'Completed' if st.session_state.get('evaluation_ran') else 'Not done'})
+                pipeline_df = pd.DataFrame(pipeline_data)
+                st.dataframe(pipeline_df, use_container_width=True, height=400)
                 
-                pdf = pd.DataFrame(pd_data)
-                st.dataframe(pdf, use_container_width=True, height=400)
-                
-                completed = sum(1 for d in pd_data if d['Status'] == '✅')
-                progress = int((completed / len(pd_data)) * 100)
+                # Progress
+                completed = sum(1 for d in pipeline_data if d['Status'] == '✅')
+                progress = int((completed / len(pipeline_data)) * 100)
                 st.progress(progress, text=f"Pipeline Progress: {progress}%")
+                
+                # Download report
+                csv = pipeline_df.to_csv(index=False)
+                st.download_button(
+                    "📥 Download Pipeline Report",
+                    data=csv,
+                    file_name="pipeline_summary.csv",
+                    mime="text/csv"
+                )
 
 if __name__ == "__main__":
     main()
