@@ -2226,8 +2226,8 @@ def main():
             if 'MP_Count_per_L' in df.columns and 'Risk_Score' in df.columns:
                 clean = df.dropna(subset=['MP_Count_per_L', 'Risk_Score'])
                 if not clean.empty:
-fig = px.scatter(clean, x='MP_Count_per_L', y='Risk_Score',
-               title='MP Count vs Risk Score', opacity=0.7)
+                    fig = px.scatter(clean, x='MP_Count_per_L', y='Risk_Score',
+                                   title='MP Count vs Risk Score', opacity=0.7)
                     st.plotly_chart(fig, use_container_width=True)
         
         st.divider()
