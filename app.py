@@ -1841,71 +1841,179 @@ def main():
                     st.session_state.processed_data = df_capped
         
         # ==================== PREPROCESSING TAB 4: Skewness & Transform ====================
+        # ==================== PREPROCESSING TAB 4: Skewness & Transform ====================
         with p4:
             st.markdown("### 📊 Skewness Analysis & Log Transform")
-            st.markdown("Analyze and reduce skewness in numerical features")
+            st.markdown("""
+            **Subtask:** Check for skewed numerical columns and apply transformations (log transformation) if necessary.
             
-            numerical_cols = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
-            numerical_cols = [c for c in numerical_cols if 'ID' not in c and 'Sample' not in c]
+            Calculate and display the skewness of the numerical columns, identify skewed columns, 
+            apply log transformation to skewed columns, and recalculate and display the skewness.
+            """)
             
-            if len(numerical_cols) == 0:
-                st.warning("No numerical columns for skewness analysis")
+            # Select the numerical columns
+            numerical_cols = ['MP_Count_per_L', 'Risk_Score', 
+                             'Microplastic_Size_mm_midpoint', 'Density_midpoint']
+            
+            # Check which columns exist
+            available_cols = [col for col in numerical_cols if col in df.columns]
+            missing_cols = [col for col in numerical_cols if col not in df.columns]
+            
+            if missing_cols:
+                st.warning(f"⚠️ Some columns not found: {', '.join(missing_cols)}")
+            
+            if len(available_cols) == 0:
+                st.error("❌ None of the specified numerical columns found!")
             else:
-                # Skewness analysis
-                skew_info = analyze_skewness(df, numerical_cols)
-                st.markdown("**Skewness Analysis:**")
-                st.dataframe(skew_info, use_container_width=True, hide_index=True)
+                st.markdown(f"**📊 Numerical columns:** {', '.join(available_cols)}")
                 
-                # Identify skewed columns
-                skewed_cols = skew_info[skew_info['Skewed'] == 'Yes']['Column'].tolist()
+                # Calculate and display skewness before transformation
+                st.markdown("---")
+                st.markdown("### 📋 Skewness Before Transformation")
+                
+                skewness_before = df[available_cols].skew()
+                
+                st.markdown("**Skewness before transformation:**")
+                st.dataframe(skewness_before.round(6), use_container_width=True)
+                
+                # Create a styled dataframe showing skewness status
+                skew_before_df = pd.DataFrame({
+                    'Column': available_cols,
+                    'Skewness': skewness_before.values.round(6),
+                    'Status': ['⚠️ SKEWED' if abs(s) > 0.5 else '✅ OK' for s in skewness_before.values]
+                })
+                
+                # Identify skewed columns (using a threshold of 0.5)
+                skewed_cols = skewness_before[abs(skewness_before) > 0.5].index.tolist()
+                
+                st.markdown(f"**Threshold:** |skewness| > 0.5")
                 
                 if len(skewed_cols) == 0:
-                    st.success("✅ No highly skewed columns found!")
+                    st.success("✅ No skewed columns found! All columns have |skewness| ≤ 0.5.")
                 else:
-                    st.warning(f"Found {len(skewed_cols)} skewed columns")
+                    st.warning(f"⚠️ Found {len(skewed_cols)} skewed column(s): **{', '.join(skewed_cols)}**")
                     
-                    selected_skewed = st.multiselect(
-                        "Select columns for log transform:",
-                        skewed_cols,
-                        default=skewed_cols[:5] if len(skewed_cols) > 5 else skewed_cols,
-                        key="skew_cols"
-                    )
+                    for col in skewed_cols:
+                        direction = "Right (Positive)" if skewness_before[col] > 0 else "Left (Negative)"
+                        st.info(f"**{col}:** Skewness = {skewness_before[col]:.6f} → {direction} skew")
                     
-                    if selected_skewed and st.button("Apply Log Transform", key="log_btn"):
-                        df_transformed = apply_log_transform(df, selected_skewed)
-                        st.session_state.processed_data = df_transformed
-                        
-                        # Show comparison
-                        skew_before = df[selected_skewed].skew().values
-                        skew_after = df_transformed[selected_skewed].skew().values
-                        
-                        skew_comparison = pd.DataFrame({
-                            'Column': selected_skewed,
-                            'Skewness Before': skew_before,
-                            'Skewness After': skew_after,
-                            'Reduction': skew_before - skew_after
-                        }).round(4)
-                        
-                        st.markdown("**Skewness Comparison:**")
-                        st.dataframe(skew_comparison, use_container_width=True, hide_index=True)
-                        
-                        # Visualize transformation
-                        for col in selected_skewed[:3]:  # Show first 3
-                            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+                    # Visualize before transformation
+                    st.markdown("---")
+                    st.markdown("### 📈 Distribution of Skewed Columns (Before)")
+                    
+                    num_cols = min(len(skewed_cols), 2)
+                    fig, axes = plt.subplots(1, num_cols, figsize=(7*num_cols, 5))
+                    if num_cols == 1:
+                        axes = [axes]
+                    
+                    for i, col in enumerate(skewed_cols[:num_cols]):
+                        clean_data = df[col].dropna()
+                        sns.histplot(data=clean_data, kde=True, bins=30,
+                                   color='#ffeaa7', edgecolor='white', alpha=0.7, ax=axes[i])
+                        axes[i].set_title(f'{col}\nSkewness: {clean_data.skew():.6f}',
+                                        fontsize=12, fontweight='bold')
+                        axes[i].axvline(clean_data.mean(), color='red', linestyle='--',
+                                      label=f'Mean: {clean_data.mean():.2f}')
+                        axes[i].axvline(clean_data.median(), color='green', linestyle='--',
+                                      label=f'Median: {clean_data.median():.2f}')
+                        axes[i].legend()
+                    
+                    plt.suptitle('Skewed Columns - Before Transformation', fontsize=16, fontweight='bold')
+                    plt.tight_layout()
+                    st.pyplot(fig)
+                    plt.close()
+                    
+                    # Apply transformation
+                    st.markdown("---")
+                    st.markdown("### 🔧 Apply Log Transformation")
+                    st.markdown("""
+                    **Transformation:** `np.log1p(x - min(x))` 
+                    
+                    This shifts values to handle negatives, then applies log1p to reduce skewness.
+                    """)
+                    
+                    if st.button("📊 Apply Log Transformation to Skewed Columns", type="primary", key="log_btn"):
+                        with st.spinner('Applying log transformation...'):
+                            df_transformed = df.copy()
                             
-                            sns.histplot(df[col].dropna(), kde=True, bins=30, 
-                                       color='#ffeaa7', ax=ax1)
-                            ax1.set_title(f'{col} - Before Log Transform\nSkewness: {df[col].skew():.4f}')
+                            # Apply log transformation to skewed columns
+                            for col in skewed_cols:
+                                # Apply log1p after shifting to handle negative values
+                                df_transformed[col] = np.log1p(df_transformed[col] - df_transformed[col].min())
                             
-                            sns.histplot(df_transformed[col].dropna(), kde=True, bins=30, 
-                                       color='#55efc4', ax=ax2)
-                            ax2.set_title(f'{col} - After Log Transform\nSkewness: {df_transformed[col].skew():.4f}')
+                            # Store in session state
+                            st.session_state.processed_data = df_transformed
+                            st.session_state.skewness_before = skewness_before
+                            st.session_state.skewness_after = df_transformed[available_cols].skew()
+                            st.session_state.skewed_cols_transformed = skewed_cols
                             
-                            plt.tight_layout()
-                            st.pyplot(fig)
-                            plt.close()
-                        
-                        st.success("✅ Log transform applied!")
+                            # Recalculate and display skewness after transformation
+                            st.markdown("---")
+                            st.markdown("### 📊 Skewness After Transformation")
+                            
+                            skewness_after = df_transformed[available_cols].skew()
+                            
+                            st.markdown("**Skewness after transformation:**")
+                            st.dataframe(skewness_after.round(6), use_container_width=True)
+                            
+                            # Comparison table
+                            st.markdown("---")
+                            st.markdown("### 📊 Before vs After Comparison")
+                            
+                            comparison_df = pd.DataFrame({
+                                'Column': available_cols,
+                                'Skewness Before': skewness_before[available_cols].values.round(6),
+                                'Skewness After': skewness_after[available_cols].values.round(6),
+                                '|Change|': (abs(skewness_before[available_cols].values) - abs(skewness_after[available_cols].values)).round(6),
+                                'Improved': ['✅ YES' if abs(skewness_after[col]) < abs(skewness_before[col]) else '⬜ NO'
+                                           for col in available_cols]
+                            })
+                            st.dataframe(comparison_df, use_container_width=True, hide_index=True)
+                            
+                            # Summary
+                            improved = [col for col in available_cols 
+                                      if abs(skewness_after[col]) < abs(skewness_before[col])]
+                            st.success(f"✅ Skewness reduced in {len(improved)} column(s): {', '.join(improved)}")
+                            
+                            # Visual comparison
+                            st.markdown("---")
+                            st.markdown("### 📈 Visual Comparison (Before vs After)")
+                            
+                            for col in skewed_cols:
+                                fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+                                
+                                # Before
+                                clean_before = df[col].dropna()
+                                sns.histplot(data=clean_before, kde=True, bins=30,
+                                           color='#ffeaa7', edgecolor='white', alpha=0.7, ax=ax1)
+                                ax1.set_title(f'{col} - BEFORE\nSkewness: {clean_before.skew():.6f}',
+                                            fontsize=12, fontweight='bold')
+                                ax1.set_xlabel(col)
+                                ax1.set_ylabel('Frequency')
+                                
+                                # After
+                                clean_after = df_transformed[col].dropna()
+                                sns.histplot(data=clean_after, kde=True, bins=30,
+                                           color='#55efc4', edgecolor='white', alpha=0.7, ax=ax2)
+                                ax2.set_title(f'{col} - AFTER\nSkewness: {clean_after.skew():.6f}',
+                                            fontsize=12, fontweight='bold')
+                                ax2.set_xlabel(col)
+                                ax2.set_ylabel('Frequency')
+                                
+                                plt.suptitle(f'Log Transformation: {col}', fontsize=14, fontweight='bold')
+                                plt.tight_layout()
+                                st.pyplot(fig)
+                                plt.close()
+                            
+                            # Download
+                            st.markdown("---")
+                            csv_transformed = df_transformed[available_cols].to_csv(index=False)
+                            st.download_button(
+                                label="📥 Download Transformed Data (CSV)",
+                                data=csv_transformed,
+                                file_name="skewness_transformed_data.csv",
+                                mime="text/csv"
+                            )
         
         # ==================== PREPROCESSING TAB 5: Summary ====================
         with p5:
