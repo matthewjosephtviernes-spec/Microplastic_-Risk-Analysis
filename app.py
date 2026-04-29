@@ -2233,7 +2233,7 @@ def main():
         st.divider()
         
         # ─────────────────────────────────────────────────────────────
-        # STEP 4: Implement Selected Methods
+        # STEP 4: Implement Selected Methods (AUTO-RUN)
         # ─────────────────────────────────────────────────────────────
         st.markdown("## 🎯 Step 4: Implement Selected Method(s)")
         st.markdown("Apply Mutual Information, Chi-squared, and Random Forest to rank features.")
@@ -2255,102 +2255,125 @@ def main():
         
         st.divider()
         
-        # ── Run Button ──
-        if st.button("🚀 Run Feature Selection", type="primary", use_container_width=True):
-            with st.spinner('Running feature selection...'):
-                try:
-                    # --- Prepare Data ---
-                    df_encoded = pd.get_dummies(df, columns=available_cats, drop_first=True)
-                    y = df[feat_target].copy()
-                    mask = y.notna()
-                    y = y[mask]
-                    
-                    original_cols = [c for c in df.columns if c != feat_target]
-                    ohe_cols = [c for c in df_encoded.columns if c not in original_cols]
-                    X = df_encoded[ohe_cols].loc[mask].fillna(0)
-                    
-                    if y.dtype == 'object':
-                        y_encoded = LabelEncoder().fit_transform(y)
-                    else:
-                        y_encoded = y
-                    
-                    st.success(f"Data prepared: X={X.shape}, y={len(y_encoded):,}")
-                    
-                    # --- Method 1: Mutual Information ---
-                    st.divider()
-                    st.markdown("### 📊 Method 1: Mutual Information")
-                    
-                    mi_scores = mutual_info_classif(X, y_encoded, random_state=42)
-                    mi_series = pd.Series(mi_scores, index=X.columns).sort_values(ascending=False)
-                    
+        # ── Auto-run feature selection ──
+        with st.spinner('Running feature selection automatically...'):
+            try:
+                # --- Prepare Data ---
+                df_encoded = pd.get_dummies(df, columns=available_cats, drop_first=True)
+                y = df[feat_target].copy()
+                mask = y.notna()
+                y = y[mask]
+                
+                original_cols = [c for c in df.columns if c != feat_target]
+                ohe_cols = [c for c in df_encoded.columns if c not in original_cols]
+                X = df_encoded[ohe_cols].loc[mask].fillna(0)
+                
+                if y.dtype == 'object':
+                    y_encoded = LabelEncoder().fit_transform(y)
+                else:
+                    y_encoded = y
+                
+                st.success(f"✅ Data prepared: X = {X.shape[0]} rows × {X.shape[1]} features, y = {len(y_encoded):,} samples")
+                
+                # --- Method 1: Mutual Information ---
+                st.divider()
+                st.markdown("### 📊 Method 1: Mutual Information Scores")
+                st.markdown("*Measures dependency between each feature and the target variable*")
+                
+                mi_scores = mutual_info_classif(X, y_encoded, random_state=42)
+                mi_series = pd.Series(mi_scores, index=X.columns).sort_values(ascending=False)
+                
+                col1, col2 = st.columns([3, 2])
+                with col1:
                     mi_df = pd.DataFrame({
+                        'Rank': range(1, n_top + 1),
                         'Feature': mi_series.head(n_top).index,
-                        'MI Score': mi_series.head(n_top).values.round(6)
+                        'Mutual Information Score': mi_series.head(n_top).values.round(6)
                     })
                     st.dataframe(mi_df, use_container_width=True, hide_index=True)
-                    
-                    fig = px.bar(mi_df.head(15), x='Feature', y='MI Score',
-                               title='Mutual Information Scores', color='MI Score')
+                with col2:
+                    fig = px.bar(mi_df.head(15), x='Feature', y='Mutual Information Score',
+                               title='Top 15 - Mutual Information', color='Mutual Information Score',
+                               color_continuous_scale='Blues')
+                    fig.update_layout(height=350, xaxis_tickangle=-45)
                     st.plotly_chart(fig, use_container_width=True)
-                    
-                    # --- Method 2: Chi-Squared ---
-                    st.divider()
-                    st.markdown("### 🔢 Method 2: Chi-Squared Test")
-                    
-                    chi2_scores, _ = chi2(X, y_encoded)
-                    chi2_series = pd.Series(chi2_scores, index=X.columns).sort_values(ascending=False)
-                    
+                
+                # --- Method 2: Chi-Squared ---
+                st.divider()
+                st.markdown("### 🔢 Method 2: Chi-Squared Test Scores")
+                st.markdown("*Tests statistical independence between features and target*")
+                
+                chi2_scores, _ = chi2(X, y_encoded)
+                chi2_series = pd.Series(chi2_scores, index=X.columns).sort_values(ascending=False)
+                
+                col1, col2 = st.columns([3, 2])
+                with col1:
                     chi2_df = pd.DataFrame({
+                        'Rank': range(1, n_top + 1),
                         'Feature': chi2_series.head(n_top).index,
-                        'Chi2 Score': chi2_series.head(n_top).values.round(4)
+                        'Chi-Squared Score': chi2_series.head(n_top).values.round(4)
                     })
                     st.dataframe(chi2_df, use_container_width=True, hide_index=True)
-                    
-                    fig = px.bar(chi2_df.head(15), x='Feature', y='Chi2 Score',
-                               title='Chi-Squared Scores', color='Chi2 Score')
+                with col2:
+                    fig = px.bar(chi2_df.head(15), x='Feature', y='Chi-Squared Score',
+                               title='Top 15 - Chi-Squared', color='Chi-Squared Score',
+                               color_continuous_scale='Reds')
+                    fig.update_layout(height=350, xaxis_tickangle=-45)
                     st.plotly_chart(fig, use_container_width=True)
-                    
-                    # --- Method 3: Random Forest ---
-                    st.divider()
-                    st.markdown("### 🌲 Method 3: Random Forest Importance")
-                    
-                    rf = RandomForestClassifier(n_estimators=50, random_state=42, n_jobs=-1)
-                    rf.fit(X, y_encoded)
-                    rf_series = pd.Series(rf.feature_importances_, index=X.columns).sort_values(ascending=False)
-                    
+                
+                # --- Method 3: Random Forest ---
+                st.divider()
+                st.markdown("### 🌲 Method 3: Random Forest Feature Importances")
+                st.markdown("*Model-based importance from Random Forest Classifier*")
+                
+                rf = RandomForestClassifier(n_estimators=50, random_state=42, n_jobs=-1)
+                rf.fit(X, y_encoded)
+                rf_series = pd.Series(rf.feature_importances_, index=X.columns).sort_values(ascending=False)
+                
+                col1, col2 = st.columns([3, 2])
+                with col1:
                     rf_df = pd.DataFrame({
+                        'Rank': range(1, n_top + 1),
                         'Feature': rf_series.head(n_top).index,
                         'Importance': rf_series.head(n_top).values.round(6)
                     })
                     st.dataframe(rf_df, use_container_width=True, hide_index=True)
-                    
+                with col2:
                     fig = px.bar(rf_df.head(15), x='Feature', y='Importance',
-                               title='Random Forest Importance', color='Importance')
+                               title='Top 15 - Random Forest', color='Importance',
+                               color_continuous_scale='Greens')
+                    fig.update_layout(height=350, xaxis_tickangle=-45)
                     st.plotly_chart(fig, use_container_width=True)
-                    
-                    # --- Combined Summary ---
-                    st.divider()
-                    st.markdown("### 📋 Combined Summary")
-                    
-                    top_features = rf_series.head(n_top).index.tolist()
-                    combined = pd.DataFrame({
-                        'Feature': top_features,
-                        'RF Importance': [rf_series.get(f, 0) for f in top_features],
-                        'MI Score': [mi_series.get(f, 0) for f in top_features],
-                        'Chi2 Score': [chi2_series.get(f, 0) for f in top_features]
-                    }).round(6)
-                    st.dataframe(combined, use_container_width=True, hide_index=True)
-                    
-                    # Store for modeling
-                    st.session_state.selected_features = rf_series.head(10).index.tolist()
-                    st.success(f"✅ Top 10 features stored: {', '.join(rf_series.head(10).index.tolist())}")
-                    
-                    # Download
-                    st.download_button("📥 Download Report", combined.to_csv(index=False),
-                                     "feature_selection_report.csv", "text/csv")
                 
-                except Exception as e:
-                    st.error(f"Error: {str(e)}")
+                # --- Combined Summary ---
+                st.divider()
+                st.markdown("### 📋 Combined Feature Selection Summary")
+                
+                top_features = rf_series.head(n_top).index.tolist()
+                combined = pd.DataFrame({
+                    'Feature': top_features,
+                    'RF Importance': [round(rf_series.get(f, 0), 6) for f in top_features],
+                    'MI Score': [round(mi_series.get(f, 0), 6) for f in top_features],
+                    'Chi2 Score': [round(chi2_series.get(f, 0), 4) for f in top_features]
+                })
+                st.dataframe(combined, use_container_width=True, hide_index=True)
+                
+                # Store for modeling
+                st.session_state.feature_importance = rf_series
+                st.session_state.mutual_info = mi_series
+                st.session_state.chi2_scores = chi2_series
+                st.session_state.selected_features = rf_series.head(10).index.tolist()
+                
+                st.success(f"✅ **Top 10 features stored for modeling:** {', '.join(rf_series.head(10).index.tolist())}")
+                
+                # Download
+                csv_combined = combined.to_csv(index=False)
+                st.download_button("📥 Download Feature Selection Report", csv_combined,
+                                 "feature_selection_report.csv", "text/csv")
+            
+            except Exception as e:
+                st.error(f"❌ Feature selection error: {str(e)}")
+                st.info("Please check that your data has categorical columns and the target variable is valid.")
     
     # ==================== MODELING PAGE ====================
     elif section == "🤖 Modeling":
