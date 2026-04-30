@@ -1168,39 +1168,174 @@ def main():
         with p1:
             st.markdown("### 📏 Feature Scaling")
             st.markdown("""
-            **Subtask:** Apply feature scaling (Standardization) to the numerical columns.
+            **Subtask:** Apply feature scaling (e.g., standardization or normalization) to the numerical columns.
             
-            StandardScaler transforms the data to have mean=0 and standard deviation=1.
+            **Reasoning:** Apply StandardScaler to the numerical columns and display the first few rows of the scaled data.
             """)
             
+            # Show the code
+            st.markdown("**Code Implementation:**")
+            st.code(
+                "from sklearn.preprocessing import StandardScaler\n\n" +
+                "# Instantiate the scaler\n" +
+                "scaler = StandardScaler()\n\n" +
+                "# Select the numerical columns\n" +
+                "numerical_cols = ['MP_Count_per_L', 'Risk_Score', 'Microplastic_Size_mm_midpoint', 'Density_midpoint']\n\n" +
+                "# Fit and transform the numerical data\n" +
+                "df[numerical_cols] = scaler.fit_transform(df[numerical_cols])\n\n" +
+                "# Display the first few rows of the scaled numerical data\n" +
+                'print("First 5 rows of scaled numerical data:")\n' +
+                "display(df[numerical_cols].head())",
+                language='python'
+            )
+            
+            # Select the numerical columns
             numerical_cols = ['MP_Count_per_L', 'Risk_Score', 
                              'Microplastic_Size_mm_midpoint', 'Density_midpoint']
             
+            # Check which columns exist AND are numeric
             available_cols = [col for col in numerical_cols if col in df.columns and df[col].dtype in ['float64', 'int64']]
             missing_cols = [col for col in numerical_cols if col not in df.columns]
             non_numeric = [col for col in numerical_cols if col in df.columns and df[col].dtype not in ['float64', 'int64']]
             
             if missing_cols:
-                st.warning(f"⚠️ Columns not found: {', '.join(missing_cols)}")
+                st.warning(f"⚠️ Some columns not found in dataset: {', '.join(missing_cols)}")
             if non_numeric:
-                st.info(f"ℹ️ Skipped non-numeric columns: {', '.join(non_numeric)}")
+                st.info(f"ℹ️ Skipped non-numeric columns: {', '.join(non_numeric)} (these contain text values like '0.1–5.0', 'Low–Medium')")
             
             if len(available_cols) == 0:
-                st.error("❌ No numeric columns found for scaling!")
+                st.error("❌ None of the specified numerical columns found as numeric!")
+                st.info(f"Available numeric columns: {', '.join(df.select_dtypes(include=['float64', 'int64']).columns.tolist())}")
             else:
                 st.markdown(f"**📊 Columns to scale:** {', '.join(available_cols)}")
-                st.markdown("**First 5 rows of original data:**")
+                
+                # Show data before scaling
+                st.markdown("---")
+                st.markdown("### 📋 Data Before Scaling")
+                st.markdown("**First 5 rows of original numerical data:**")
                 st.dataframe(df[available_cols].head(), use_container_width=True)
                 
+                st.markdown("**Descriptive Statistics (Before Scaling):**")
+                st.dataframe(df[available_cols].describe(), use_container_width=True)
+                
+                # Apply StandardScaler
+                st.markdown("---")
+                st.markdown("### 🔧 Apply StandardScaler")
+                st.markdown("""
+                **StandardScaler Formula:** 
+                - z = (x - μ) / σ
+                - where μ is the mean and σ is the standard deviation
+                
+                After scaling, each column will have:
+                - Mean ≈ 0
+                - Standard Deviation ≈ 1
+                """)
+                
                 if st.button("📏 Apply StandardScaler", type="primary", key="scale_btn"):
-                    scaler = StandardScaler()
-                    df[available_cols] = scaler.fit_transform(df[available_cols])
-                    st.session_state.processed_data = df
-                    st.session_state.scaler = scaler
-                    st.session_state.scaled_columns = available_cols
-                    st.success(f"✅ Scaled {len(available_cols)} columns!")
-                    st.markdown("**First 5 rows of scaled data:**")
-                    st.dataframe(df[available_cols].head(), use_container_width=True)
+                    with st.spinner('Applying StandardScaler...'):
+                        # Store original data for comparison
+                        df_original = df.copy()
+                        
+                        # Instantiate the scaler
+                        scaler = StandardScaler()
+                        
+                        # Fit and transform the numerical data
+                        df[available_cols] = scaler.fit_transform(df[available_cols])
+                        
+                        # Store in session state
+                        st.session_state.processed_data = df
+                        st.session_state.scaler = scaler
+                        st.session_state.scaled_columns = available_cols
+                        
+                        st.success(f"✅ Successfully scaled {len(available_cols)} columns!")
+                        
+                        # Display the first few rows of the scaled numerical data
+                        st.markdown("---")
+                        st.markdown("### 📊 Scaled Data Results")
+                        
+                        st.markdown("**First 5 rows of scaled numerical data:**")
+                        st.dataframe(df[available_cols].head(), use_container_width=True)
+                        
+                        # Show statistics after scaling
+                        st.markdown("**Descriptive Statistics (After Scaling):**")
+                        st.dataframe(df[available_cols].describe(), use_container_width=True)
+                        
+                        # Show scaling parameters
+                        st.markdown("**Scaling Parameters (Mean & Standard Deviation used):**")
+                        scaling_params = pd.DataFrame({
+                            'Column': available_cols,
+                            'Mean (μ)': scaler.mean_.round(6),
+                            'Std (σ)': scaler.scale_.round(6)
+                        })
+                        st.dataframe(scaling_params, use_container_width=True, hide_index=True)
+                        
+                        # Verify: Mean ≈ 0, Std ≈ 1
+                        st.markdown("**Verification (After Scaling):**")
+                        verify_df = pd.DataFrame({
+                            'Column': available_cols,
+                            'Mean (should be ≈0)': df[available_cols].mean().round(10).values,
+                            'Std (should be ≈1)': df[available_cols].std().round(10).values
+                        })
+                        st.dataframe(verify_df, use_container_width=True, hide_index=True)
+                        
+                        # Visual comparison
+                        st.markdown("---")
+                        st.markdown("### 📈 Visual Comparison (Before vs After)")
+                        
+                        for col in available_cols[:2]:
+                            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+                            
+                            # Before
+                            original_clean = df_original[col].dropna()
+                            sns.histplot(data=original_clean, kde=True, bins=30, 
+                                       color='#3498db', edgecolor='white', alpha=0.7, ax=ax1)
+                            ax1.set_title(f'{col} - Before Scaling\nMean: {original_clean.mean():.4f}, Std: {original_clean.std():.4f}', 
+                                        fontsize=12)
+                            ax1.set_xlabel(col)
+                            ax1.set_ylabel('Frequency')
+                            
+                            # After
+                            scaled_clean = df[col].dropna()
+                            sns.histplot(data=scaled_clean, kde=True, bins=30, 
+                                       color='#2ecc71', edgecolor='white', alpha=0.7, ax=ax2)
+                            ax2.set_title(f'{col} - After Scaling\nMean: {scaled_clean.mean():.4f}, Std: {scaled_clean.std():.4f}', 
+                                        fontsize=12)
+                            ax2.set_xlabel(col)
+                            ax2.set_ylabel('Frequency')
+                            
+                            plt.suptitle(f'Feature Scaling Comparison: {col}', fontsize=14, fontweight='bold')
+                            plt.tight_layout()
+                            st.pyplot(fig)
+                            plt.close()
+                        
+                        # Before vs After statistics comparison
+                        st.markdown("**Before vs After Statistics Comparison:**")
+                        comparison_stats = []
+                        for col in available_cols:
+                            before_stats = df_original[col].describe()
+                            after_stats = df[col].describe()
+                            comparison_stats.append({
+                                'Column': col,
+                                'Mean Before': f"{before_stats['mean']:.4f}",
+                                'Mean After': f"{after_stats['mean']:.4f}",
+                                'Std Before': f"{before_stats['std']:.4f}",
+                                'Std After': f"{after_stats['std']:.4f}",
+                                'Min Before': f"{before_stats['min']:.4f}",
+                                'Min After': f"{after_stats['min']:.4f}",
+                                'Max Before': f"{before_stats['max']:.4f}",
+                                'Max After': f"{after_stats['max']:.4f}"
+                            })
+                        st.dataframe(pd.DataFrame(comparison_stats), use_container_width=True, hide_index=True)
+                        
+                        # Download scaled data
+                        st.markdown("---")
+                        csv_scaled = df[available_cols].to_csv(index=False)
+                        st.download_button(
+                            label="📥 Download Scaled Data (CSV)",
+                            data=csv_scaled,
+                            file_name="scaled_numerical_data.csv",
+                            mime="text/csv"
+                        )
         
         # ==================== TAB 2: Categorical Encoding ====================
         with p2:
