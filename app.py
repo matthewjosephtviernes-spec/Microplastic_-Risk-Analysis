@@ -1340,7 +1340,7 @@ def main():
                 csv = current_data.to_csv(index=False)
                 st.download_button("📥 Download Processed Data", data=csv, file_name="processed_data.csv", mime="text/csv")
             else:
-                st.info("No preprocessing steps applied yet."))
+                st.info("No preprocessing steps applied yet.")
     
     # ==================== FEATURE SELECTION PAGE ====================
     # ==================== FEATURE SELECTION PAGE ====================
