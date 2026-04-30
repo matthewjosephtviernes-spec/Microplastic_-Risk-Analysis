@@ -2375,6 +2375,7 @@ def main():
                 st.error(f"❌ Feature selection error: {str(e)}")
                 st.info("Please check that your data has categorical columns and the target variable is valid.")
     # ==================== MODELING PAGE ====================
+    # ==================== MODELING PAGE ====================
     elif section == "🤖 Modeling":
         st.markdown('<p class="section-header">🤖 Model Training</p>', unsafe_allow_html=True)
         
@@ -2435,21 +2436,18 @@ def main():
         considering their suitability for the dataset and task.
         """)
         
-        st.markdown("### 📋 Selected Classification Models")
-        
         col1, col2, col3 = st.columns(3)
         
         with col1:
             st.markdown("""
-            <div style='background: linear-gradient(135deg, #0984e3, #74b9ff); color: white; padding: 1.5rem; border-radius: 10px; min-height: 280px;'>
+            <div style='background: linear-gradient(135deg, #0984e3, #74b9ff); color: white; padding: 1.5rem; border-radius: 10px; min-height: 250px;'>
             <h3 style='margin-top: 0;'>📊 Model 1</h3>
             <h2 style='margin: 10px 0;'>Logistic Regression</h2>
             <hr style='border-color: rgba(255,255,255,0.3);'>
             <p style='font-size: 0.9rem;'>
-            <strong>Type:</strong> Linear Model<br>
-            <strong>Best for:</strong> Multi-class classification<br><br>
-            A simple and interpretable linear model. Provides probabilities for each class 
-            and is computationally efficient. Suitable for multi-class classification tasks.
+            <strong>Type:</strong> Linear Model<br><br>
+            A simple and interpretable linear model, suitable for multi-class classification.
+            Provides probabilities for each class and is computationally efficient.
             </p>
             <p style='margin-top: 15px;'><strong>✅ SELECTED</strong></p>
             </div>
@@ -2457,14 +2455,13 @@ def main():
         
         with col2:
             st.markdown("""
-            <div style='background: linear-gradient(135deg, #00b894, #55efc4); color: white; padding: 1.5rem; border-radius: 10px; min-height: 280px;'>
+            <div style='background: linear-gradient(135deg, #00b894, #55efc4); color: white; padding: 1.5rem; border-radius: 10px; min-height: 250px;'>
             <h3 style='margin-top: 0;'>🌲 Model 2</h3>
             <h2 style='margin: 10px 0;'>Random Forest</h2>
             <hr style='border-color: rgba(255,255,255,0.3);'>
             <p style='font-size: 0.9rem;'>
-            <strong>Type:</strong> Ensemble Method<br>
-            <strong>Best for:</strong> Non-linear relationships<br><br>
-            An ensemble method that builds multiple decision trees and combines their predictions. 
+            <strong>Type:</strong> Ensemble Method<br><br>
+            An ensemble method that builds multiple decision trees and combines their predictions.
             Generally robust to outliers and can capture non-linear relationships.
             </p>
             <p style='margin-top: 15px;'><strong>✅ SELECTED</strong></p>
@@ -2473,13 +2470,12 @@ def main():
         
         with col3:
             st.markdown("""
-            <div style='background: linear-gradient(135deg, #6c5ce7, #a29bfe); color: white; padding: 1.5rem; border-radius: 10px; min-height: 280px;'>
+            <div style='background: linear-gradient(135deg, #6c5ce7, #a29bfe); color: white; padding: 1.5rem; border-radius: 10px; min-height: 250px;'>
             <h3 style='margin-top: 0;'>🚀 Model 3</h3>
             <h2 style='margin: 10px 0;'>Gradient Boosting</h2>
             <hr style='border-color: rgba(255,255,255,0.3);'>
             <p style='font-size: 0.9rem;'>
-            <strong>Type:</strong> Ensemble Method<br>
-            <strong>Best for:</strong> High accuracy tasks<br><br>
+            <strong>Type:</strong> Ensemble Method<br><br>
             A powerful ensemble method that builds trees sequentially, with each tree 
             correcting the errors of the previous ones. Often provides high accuracy.
             </p>
@@ -2487,57 +2483,10 @@ def main():
             </div>
             """, unsafe_allow_html=True)
         
-        st.markdown("---")
+        st.divider()
         
-        # Model comparison table
-        st.markdown("### 📊 Model Comparison")
-        
-        model_comparison = pd.DataFrame({
-            'Model': ['Logistic Regression', 'Random Forest', 'Gradient Boosting'],
-            'Type': ['Linear Model', 'Ensemble (Bagging)', 'Ensemble (Boosting)'],
-            'Interpretability': ['⭐⭐⭐⭐⭐ High', '⭐⭐⭐ Medium', '⭐⭐ Low'],
-            'Handles Non-linear': ['❌ No', '✅ Yes', '✅ Yes'],
-            'Training Speed': ['⚡ Fast', '⚡⚡ Medium', '🐢 Slower'],
-            'Risk of Overfitting': ['✅ Low', '✅ Low', '⚠️ Higher'],
-            'Provides Probabilities': ['✅ Yes', '✅ Yes', '✅ Yes'],
-            'Handles Outliers': ['❌ Sensitive', '✅ Robust', '⚠️ Moderate']
-        })
-        
-        st.dataframe(model_comparison, use_container_width=True, hide_index=True)
-        
-        st.markdown("---")
-        
-        st.markdown("### 🎯 Why These Models Were Selected")
-        
-        st.markdown("""
-        **1. Logistic Regression**
-        - Simple baseline model that is easy to interpret
-        - Works well when features have linear relationships with the target
-        - Provides probability estimates for each class
-        - Computationally efficient for multi-class problems
-        
-        **2. Random Forest Classifier**
-        - Ensemble of decision trees that reduces overfitting
-        - Captures complex non-linear relationships in environmental data
-        - Robust to outliers in microplastic measurements
-        - Provides reliable feature importance scores
-        
-        **3. Gradient Boosting Classifier**
-        - Builds trees sequentially to correct previous errors
-        - Often achieves the highest predictive accuracy
-        - Handles mixed data types effectively
-        - Good for capturing subtle patterns in risk assessment data
-        
-        <div style='background: linear-gradient(135deg, #d4edda, #c3e6cb); padding: 1rem; border-radius: 8px; margin-top: 1rem;'>
-        <strong>✅ Summary:</strong> These three models provide a diverse range of approaches - 
-        from simple linear to complex ensemble methods - allowing us to compare performance 
-        and select the best model for microplastic risk prediction.
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Display selected models list
-        st.markdown("---")
-        st.markdown("### 📋 Selected Models List")
+        # Model list
+        st.markdown("### 📋 Selected Classification Models")
         
         selected_models = ['Logistic Regression', 'RandomForestClassifier', 'GradientBoostingClassifier']
         
@@ -2653,10 +2602,15 @@ def main():
         st.divider()
         
         # =============================================================
-        # STEP 4: Train Models
+        # STEP 4: Train the Models
         # =============================================================
-        st.markdown("## 🚀 Step 4: Train Models")
-        st.markdown("Train the selected classification models on the prepared data.")
+        st.markdown("## 🚀 Step 4: Train the Models")
+        st.markdown("""
+        **Subtask:** Train the chosen classification models on the training data.
+        
+        Import the necessary classification model classes, instantiate them, 
+        and train them on the training data.
+        """)
         
         if not st.session_state.get('data_split', False):
             st.warning("Please complete Step 3 (Data Split) first.")
@@ -2666,139 +2620,193 @@ def main():
             y_train = st.session_state.y_train
             y_test = st.session_state.y_test
             
-            st.markdown("**Models to train:** Logistic Regression, Random Forest, Gradient Boosting")
+            # Show the code
+            st.markdown("### 📝 Model Training Code")
+            st.code(
+                "from sklearn.linear_model import LogisticRegression\n" +
+                "from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier\n\n" +
+                "# Instantiate the selected models\n" +
+                "logistic_regression_model = LogisticRegression(random_state=42, max_iter=1000)\n" +
+                "random_forest_model = RandomForestClassifier(n_estimators=100, random_state=42)\n" +
+                "gradient_boosting_model = GradientBoostingClassifier(n_estimators=100, random_state=42)\n\n" +
+                "# Train each model\n" +
+                "logistic_regression_model.fit(X_train, y_train)\n" +
+                "random_forest_model.fit(X_train, y_train)\n" +
+                "gradient_boosting_model.fit(X_train, y_train)",
+                language='python'
+            )
+            
+            st.markdown("---")
             
             if st.button("🚀 Train All Models", type="primary", use_container_width=True, key="train_btn"):
-                with st.spinner('Training models...'):
-                    try:
-                        models = {}
-                        
-                        with st.spinner('Training Logistic Regression...'):
-                            try:
-                                lr = LogisticRegression(random_state=42, max_iter=1000, class_weight='balanced', n_jobs=-1)
-                                lr.fit(X_train, y_train)
-                                models['Logistic Regression'] = lr
-                                st.success("Logistic Regression trained!")
-                            except Exception as e:
-                                st.warning("Logistic Regression failed: " + str(e))
-                        
-                        with st.spinner('Training Random Forest...'):
-                            try:
-                                rf = RandomForestClassifier(n_estimators=100, random_state=42, class_weight='balanced', n_jobs=-1)
-                                rf.fit(X_train, y_train)
-                                models['Random Forest'] = rf
-                                st.success("Random Forest trained!")
-                            except Exception as e:
-                                st.warning("Random Forest failed: " + str(e))
-                        
-                        with st.spinner('Training Gradient Boosting...'):
-                            try:
-                                gb = GradientBoostingClassifier(n_estimators=100, random_state=42)
-                                gb.fit(X_train, y_train)
-                                models['Gradient Boosting'] = gb
-                                st.success("Gradient Boosting trained!")
-                            except Exception as e:
-                                st.warning("Gradient Boosting failed: " + str(e))
-                        
-                        if len(models) == 0:
-                            st.error("No models could be trained.")
-                            st.stop()
-                        
-                        st.session_state.models = models
-                        st.session_state.trained = True
-                        
-                        st.divider()
-                        st.markdown("## 📊 Model Performance Results")
-                        
-                        results_list = []
-                        for name, model in models.items():
-                            y_pred = model.predict(X_test)
-                            results_list.append({
-                                'Model': name,
-                                'Accuracy': accuracy_score(y_test, y_pred),
-                                'Precision': precision_score(y_test, y_pred, average='weighted', zero_division=0),
-                                'Recall': recall_score(y_test, y_pred, average='weighted', zero_division=0),
-                                'F1 Score': f1_score(y_test, y_pred, average='weighted', zero_division=0)
-                            })
-                        
-                        results_df = pd.DataFrame(results_list)
-                        
-                        best_idx = results_df['F1 Score'].idxmax()
-                        best_name = results_df.iloc[best_idx]['Model']
-                        best_f1 = results_df.iloc[best_idx]['F1 Score']
-                        
-                        st.markdown("### Performance Metrics")
-                        st.dataframe(results_df, use_container_width=True, hide_index=True)
-                        
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.success("🏆 Best: " + best_name)
-                        with col2:
-                            st.metric("Best F1 Score", str(round(best_f1, 4)))
-                        with col3:
-                            st.metric("Best Accuracy", str(round(results_df.iloc[best_idx]['Accuracy'], 4)))
-                        
-                        st.divider()
-                        st.markdown("### Model Comparison Chart")
-                        
-                        fig = px.bar(
-                            results_df.melt(id_vars='Model', var_name='Metric', value_name='Score'),
-                            x='Model', y='Score', color='Metric',
-                            barmode='group', height=400,
-                            title='Model Performance Comparison',
-                            color_discrete_sequence=px.colors.qualitative.Set2
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
-                        
-                        st.divider()
-                        st.markdown("### Confusion Matrix - " + best_name)
-                        
-                        best_model = models[best_name]
-                        y_pred_best = best_model.predict(X_test)
-                        cm = confusion_matrix(y_test, y_pred_best)
-                        
-                        fig = px.imshow(
-                            cm, text_auto=True,
-                            title='Confusion Matrix: ' + best_name,
-                            labels=dict(x='Predicted', y='Actual'),
-                            color_continuous_scale='Blues'
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
-                        
-                        if 'Random Forest' in models:
-                            st.divider()
-                            st.markdown("### 🌲 Random Forest - Feature Importance")
-                            
-                            importances = models['Random Forest'].feature_importances_
-                            feat_imp = pd.DataFrame({
-                                'Feature': features[:len(importances)],
-                                'Importance': importances
-                            }).sort_values('Importance', ascending=False)
-                            
-                            fig = px.bar(feat_imp, x='Feature', y='Importance',
-                                       title='Feature Importance (Random Forest)',
-                                       color='Importance', color_continuous_scale='Greens')
-                            fig.update_layout(xaxis_tickangle=-45, height=400)
-                            st.plotly_chart(fig, use_container_width=True)
-                        
-                        st.divider()
-                        st.markdown("### 📋 Classification Report")
-                        
-                        with st.expander("View Full Classification Report"):
-                            report_text = classification_report(y_test, y_pred_best)
-                            st.code(report_text, language='text')
-                        
-                        st.divider()
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.download_button("📥 Download Results", results_df.to_csv(index=False),
-                                             "model_results.csv", "text/csv")
-                        with col2:
-                            st.download_button("📥 Classification Report", report_text,
-                                             "classification_report.txt", "text/plain")
+                
+                # ── Logistic Regression ──
+                st.markdown("### 📊 Training Logistic Regression Model...")
+                lr_progress = st.progress(0)
+                
+                try:
+                    logistic_regression_model = LogisticRegression(random_state=42, max_iter=1000)
+                    logistic_regression_model.fit(X_train, y_train)
+                    lr_progress.progress(100)
+                    st.success("✅ Logistic Regression Model Training Complete.")
+                    st.session_state.logistic_regression_model = logistic_regression_model
+                except Exception as e:
+                    st.error("Logistic Regression failed: " + str(e))
+                    logistic_regression_model = None
+                
+                st.markdown("---")
+                
+                # ── Random Forest ──
+                st.markdown("### 🌲 Training RandomForestClassifier Model...")
+                rf_progress = st.progress(0)
+                
+                try:
+                    random_forest_model = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
+                    random_forest_model.fit(X_train, y_train)
+                    rf_progress.progress(100)
+                    st.success("✅ RandomForestClassifier Model Training Complete.")
+                    st.session_state.random_forest_model = random_forest_model
+                except Exception as e:
+                    st.error("Random Forest failed: " + str(e))
+                    random_forest_model = None
+                
+                st.markdown("---")
+                
+                # ── Gradient Boosting ──
+                st.markdown("### 🚀 Training GradientBoostingClassifier Model...")
+                gb_progress = st.progress(0)
+                
+                try:
+                    gradient_boosting_model = GradientBoostingClassifier(n_estimators=100, random_state=42)
+                    gradient_boosting_model.fit(X_train, y_train)
+                    gb_progress.progress(100)
+                    st.success("✅ GradientBoostingClassifier Model Training Complete.")
+                    st.session_state.gradient_boosting_model = gradient_boosting_model
+                except Exception as e:
+                    st.error("Gradient Boosting failed: " + str(e))
+                    gradient_boosting_model = None
+                
+                st.markdown("---")
+                
+                # ── Training Summary ──
+                trained_count = sum([
+                    logistic_regression_model is not None,
+                    random_forest_model is not None,
+                    gradient_boosting_model is not None
+                ])
+                
+                st.success("🎉 Training Complete! " + str(trained_count) + "/3 models trained successfully.")
+                
+                # Store models in dict for evaluation
+                models = {}
+                if logistic_regression_model is not None:
+                    models['Logistic Regression'] = logistic_regression_model
+                if random_forest_model is not None:
+                    models['Random Forest'] = random_forest_model
+                if gradient_boosting_model is not None:
+                    models['Gradient Boosting'] = gradient_boosting_model
+                
+                st.session_state.models = models
+                st.session_state.trained = True
+                
+                st.divider()
+                
+                # =============================================================
+                # STEP 5: Model Performance Results
+                # =============================================================
+                st.markdown("## 📊 Step 5: Model Performance Results")
+                
+                if len(models) > 0:
+                    results_list = []
+                    for name, model in models.items():
+                        y_pred = model.predict(X_test)
+                        results_list.append({
+                            'Model': name,
+                            'Accuracy': accuracy_score(y_test, y_pred),
+                            'Precision': precision_score(y_test, y_pred, average='weighted', zero_division=0),
+                            'Recall': recall_score(y_test, y_pred, average='weighted', zero_division=0),
+                            'F1 Score': f1_score(y_test, y_pred, average='weighted', zero_division=0)
+                        })
                     
-                    except Exception as e:
-                        st.error("Training failed: " + str(e))
+                    results_df = pd.DataFrame(results_list)
+                    
+                    best_idx = results_df['F1 Score'].idxmax()
+                    best_name = results_df.iloc[best_idx]['Model']
+                    best_f1 = results_df.iloc[best_idx]['F1 Score']
+                    
+                    st.markdown("### Performance Metrics")
+                    st.dataframe(results_df, use_container_width=True, hide_index=True)
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.success("🏆 Best: " + best_name)
+                    with col2:
+                        st.metric("Best F1 Score", str(round(best_f1, 4)))
+                    with col3:
+                        st.metric("Best Accuracy", str(round(results_df.iloc[best_idx]['Accuracy'], 4)))
+                    
+                    st.divider()
+                    st.markdown("### Model Comparison Chart")
+                    
+                    fig = px.bar(
+                        results_df.melt(id_vars='Model', var_name='Metric', value_name='Score'),
+                        x='Model', y='Score', color='Metric',
+                        barmode='group', height=400,
+                        title='Model Performance Comparison',
+                        color_discrete_sequence=px.colors.qualitative.Set2
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Confusion Matrix
+                    st.divider()
+                    st.markdown("### Confusion Matrix - " + best_name)
+                    
+                    best_model = models[best_name]
+                    y_pred_best = best_model.predict(X_test)
+                    cm = confusion_matrix(y_test, y_pred_best)
+                    
+                    fig = px.imshow(
+                        cm, text_auto=True,
+                        title='Confusion Matrix: ' + best_name,
+                        labels=dict(x='Predicted', y='Actual'),
+                        color_continuous_scale='Blues'
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Feature Importance
+                    if 'Random Forest' in models:
+                        st.divider()
+                        st.markdown("### 🌲 Random Forest - Feature Importance")
+                        
+                        importances = models['Random Forest'].feature_importances_
+                        feat_imp = pd.DataFrame({
+                            'Feature': features[:len(importances)],
+                            'Importance': importances
+                        }).sort_values('Importance', ascending=False)
+                        
+                        fig = px.bar(feat_imp, x='Feature', y='Importance',
+                                   title='Feature Importance (Random Forest)',
+                                   color='Importance', color_continuous_scale='Greens')
+                        fig.update_layout(xaxis_tickangle=-45, height=400)
+                        st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Classification Report
+                    st.divider()
+                    st.markdown("### 📋 Classification Report")
+                    
+                    with st.expander("View Full Classification Report"):
+                        report_text = classification_report(y_test, y_pred_best)
+                        st.code(report_text, language='text')
+                    
+                    # Download
+                    st.divider()
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.download_button("📥 Download Results", results_df.to_csv(index=False),
+                                         "model_results.csv", "text/csv")
+                    with col2:
+                        st.download_button("📥 Classification Report", report_text,
+                                         "classification_report.txt", "text/plain")
     # ==================== CROSS VALIDATION PAGE ====================
     elif section == "📊 Cross Validation & Evaluation":
         st.markdown('<p class="section-header">📊 Cross Validation & Model Evaluation</p>', unsafe_allow_html=True)
