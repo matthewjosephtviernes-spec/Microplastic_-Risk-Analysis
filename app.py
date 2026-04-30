@@ -2375,123 +2375,271 @@ def main():
                 st.error(f"❌ Feature selection error: {str(e)}")
                 st.info("Please check that your data has categorical columns and the target variable is valid.")
     
-    # ==================== MODELING PAGE ====================
-    elif section == "🤖 Modeling":
-        st.markdown('<p class="section-header">🤖 Model Training</p>', unsafe_allow_html=True)
-        
-        data = st.session_state.processed_data if st.session_state.processed_data is not None else st.session_state.data
-        if data is None: 
-            st.warning("⚠️ Load data first!")
-            return
-        
-        df = data.copy()
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            target = st.selectbox("Target Variable", df.columns.tolist(), key='train_target')
-        with col2:
-            all_features = [c for c in df.columns if c != target]
-            default_features = st.session_state.get('selected_features', 
-                                                   df.select_dtypes(include=['float64', 'int64']).columns.tolist()[:5])
-            default_features = [f for f in default_features if f in all_features]
-            features = st.multiselect("Features", all_features, default=default_features)
-        with col3:
-            test_size = st.slider("Test Size", 0.1, 0.5, 0.2)
-            use_smote = st.checkbox("Use SMOTE", value=True)
-        
-        if st.button("🚀 Train Models", type="primary", use_container_width=True):
-            if len(features) == 0: 
-                st.error("Select at least one feature!")
-            else:
-                with st.spinner('Training models...'):
-                    try:
-                        X = df[features].select_dtypes(include=['float64', 'int64', 'int32'])
-                        y = df[target]
-                        mask = y.notna()
-                        X = X[mask]
-                        y = y[mask]
-                        if y.dtype == 'object':
-                            y = LabelEncoder().fit_transform(y)
-                        X = X.fillna(X.median())
-                        
-                        X_train, X_test, y_train, y_test = train_test_split(
-                            X, y, test_size=test_size, random_state=42, 
-                            stratify=y if len(np.unique(y)) > 1 else None
-                        )
-                        
-                        if use_smote:
-                            class_counts = pd.Series(y_train).value_counts()
-                            if class_counts.min() >= 2:
-                                try:
-                                    smote = SMOTE(random_state=42, k_neighbors=min(5, class_counts.min()-1))
-                                    X_train, y_train = smote.fit_resample(X_train, y_train)
-                                except Exception as e:
-                                    st.warning(f"SMOTE failed: {str(e)}")
-                        
-                        models = {}
-                        try:
-                            lr = LogisticRegression(random_state=42, max_iter=500, class_weight='balanced', n_jobs=-1)
-                            lr.fit(X_train, y_train)
-                            models['Logistic Regression'] = lr
-                        except Exception as e:
-                            st.warning(f"Logistic Regression failed: {str(e)}")
-                        
-                        try:
-                            rf = RandomForestClassifier(n_estimators=50, random_state=42, class_weight='balanced', n_jobs=-1)
-                            rf.fit(X_train, y_train)
-                            models['Random Forest'] = rf
-                        except Exception as e:
-                            st.warning(f"Random Forest failed: {str(e)}")
-                        
-                        try:
-                            gb = GradientBoostingClassifier(n_estimators=50, random_state=42)
-                            gb.fit(X_train, y_train)
-                            models['Gradient Boosting'] = gb
-                        except Exception as e:
-                            st.warning(f"Gradient Boosting failed: {str(e)}")
-                        
-                        if models:
-                            st.session_state.models = models
-                            st.session_state.trained = True
-                            
-                            st.markdown("### 📊 Model Performance")
-                            results_list = []
-                            for name, model in models.items():
-                                y_pred = model.predict(X_test)
-                                results_list.append({
-                                    'Model': name,
-                                    'Accuracy': f"{accuracy_score(y_test, y_pred):.4f}",
-                                    'Precision': f"{precision_score(y_test, y_pred, average='weighted', zero_division=0):.4f}",
-                                    'Recall': f"{recall_score(y_test, y_pred, average='weighted', zero_division=0):.4f}",
-                                    'F1 Score': f"{f1_score(y_test, y_pred, average='weighted', zero_division=0):.4f}"
-                                })
-                            
-                            results_df = pd.DataFrame(results_list)
-                            st.dataframe(results_df, use_container_width=True, hide_index=True)
-                            
-                            best_model = results_df.iloc[results_df['F1 Score'].astype(float).idxmax()]
-                            st.success(f"🏆 Best Model: **{best_model['Model']}** with F1 Score: {best_model['F1 Score']}")
-                            
-                            fig = px.bar(
-                                results_df.melt(id_vars='Model', var_name='Metric', value_name='Score'),
-                                x='Model', y='Score', color='Metric',
-                                barmode='group', height=400
-                            )
-                            st.plotly_chart(fig, use_container_width=True)
-                            
-                            if 'Random Forest' in models:
-                                st.markdown("### 🌲 Random Forest Feature Importance")
-                                importances = models['Random Forest'].feature_importances_
-                                feat_imp = pd.DataFrame({
-                                    'Feature': features,
-                                    'Importance': importances
-                                }).sort_values('Importance', ascending=False)
-                                
-                                fig = px.bar(feat_imp, x='Feature', y='Importance')
-                                st.plotly_chart(fig, use_container_width=True)
-                    
-                    except Exception as e:
-                        st.error(f"Model training failed: {str(e)}")
+""")
+
+st.metric("Testing Samples", f"{X_test.shape[0]:,}")
+st.metric("Testing Features", X_test.shape[1])
+st.metric("Testing %", f"{test_size*100:.0f}%")
+
+# Visual representation of split
+st.divider()
+st.markdown("### 📈 Train/Test Split Visualization")
+
+fig = go.Figure()
+fig.add_trace(go.Bar(
+x=['Training Set', 'Testing Set'],
+y=[X_train.shape[0], X_test.shape[0]],
+text=[f'{X_train.shape[0]:,}<br>({(1-test_size)*100:.0f}%)', 
+      f'{X_test.shape[0]:,}<br>({test_size*100:.0f}%)'],
+textposition='auto',
+marker_color=['#0984e3', '#00b894']
+))
+fig.update_layout(
+title='Data Split Distribution',
+yaxis_title='Number of Samples',
+height=400,
+showlegend=False
+)
+st.plotly_chart(fig, use_container_width=True)
+
+# Summary table
+st.divider()
+st.markdown("### 📋 Data Split Summary")
+
+split_summary = pd.DataFrame({
+'Set': ['X_train', 'X_test', 'y_train', 'y_test'],
+'Shape': [
+    str(X_train.shape),
+    str(X_test.shape),
+    str(y_train.shape),
+    str(y_test.shape)
+],
+'Samples': [
+    X_train.shape[0],
+    X_test.shape[0],
+    y_train.shape[0],
+    y_test.shape[0]
+],
+'Features/Values': [
+    X_train.shape[1],
+    X_test.shape[1],
+    'Target',
+    'Target'
+]
+})
+st.dataframe(split_summary, use_container_width=True, hide_index=True)
+
+# Show split status if already split
+if st.session_state.get('data_split', False):
+st.divider()
+st.success("✅ Data has been split! Proceed to Step 3 to train models.")
+
+X_train = st.session_state.X_train
+X_test = st.session_state.X_test
+y_train = st.session_state.y_train
+y_test = st.session_state.y_test
+
+st.markdown(f"""
+**Current Split:**
+- X_train: {X_train.shape}
+- X_test: {X_test.shape}
+- y_train: {y_train.shape}
+- y_test: {y_test.shape}
+""")
+
+st.divider()
+
+# ─────────────────────────────────────────────────────────────
+# STEP 3: Train Models
+# ─────────────────────────────────────────────────────────────
+st.markdown("## 🚀 Step 3: Train Models")
+st.markdown("Train multiple classification models on the prepared data.")
+
+if not st.session_state.get('data_split', False):
+st.warning("⚠️ Please complete Step 2 (Data Split) first.")
+else:
+X_train = st.session_state.X_train
+X_test = st.session_state.X_test
+y_train = st.session_state.y_train
+y_test = st.session_state.y_test
+
+if st.button("🚀 Train Models", type="primary", use_container_width=True, key="train_btn"):
+with st.spinner('Training models...'):
+try:
+# ── Train Models ──
+models = {}
+
+with st.spinner('Training Logistic Regression...'):
+    try:
+        lr = LogisticRegression(
+            random_state=42, max_iter=1000, 
+            class_weight='balanced', n_jobs=-1
+        )
+        lr.fit(X_train, y_train)
+        models['Logistic Regression'] = lr
+    except Exception as e:
+        st.warning(f"Logistic Regression failed: {str(e)}")
+
+with st.spinner('Training Random Forest...'):
+    try:
+        rf = RandomForestClassifier(
+            n_estimators=100, random_state=42,
+            class_weight='balanced', n_jobs=-1
+        )
+        rf.fit(X_train, y_train)
+        models['Random Forest'] = rf
+    except Exception as e:
+        st.warning(f"Random Forest failed: {str(e)}")
+
+with st.spinner('Training Gradient Boosting...'):
+    try:
+        gb = GradientBoostingClassifier(
+            n_estimators=100, random_state=42
+        )
+        gb.fit(X_train, y_train)
+        models['Gradient Boosting'] = gb
+    except Exception as e:
+        st.warning(f"Gradient Boosting failed: {str(e)}")
+
+if len(models) == 0:
+    st.error("❌ No models could be trained.")
+    st.stop()
+
+# Store models
+st.session_state.models = models
+st.session_state.trained = True
+
+st.divider()
+
+# ── Results ──
+st.markdown("## 📊 Model Performance Results")
+
+results_list = []
+for name, model in models.items():
+    y_pred = model.predict(X_test)
+    results_list.append({
+        'Model': name,
+        'Accuracy': accuracy_score(y_test, y_pred),
+        'Precision': precision_score(y_test, y_pred, average='weighted', zero_division=0),
+        'Recall': recall_score(y_test, y_pred, average='weighted', zero_division=0),
+        'F1 Score': f1_score(y_test, y_pred, average='weighted', zero_division=0)
+    })
+
+results_df = pd.DataFrame(results_list)
+
+# Best model
+best_idx = results_df['F1 Score'].idxmax()
+best_name = results_df.iloc[best_idx]['Model']
+best_f1 = results_df.iloc[best_idx]['F1 Score']
+
+st.markdown("### Performance Metrics")
+st.dataframe(results_df, use_container_width=True, hide_index=True)
+
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.success(f"🏆 **Best: {best_name}**")
+with col2:
+    st.metric("Best F1 Score", f"{best_f1:.4f}")
+with col3:
+    st.metric("Best Accuracy", f"{results_df.iloc[best_idx]['Accuracy']:.4f}")
+
+# Comparison chart
+st.divider()
+st.markdown("### Model Comparison Chart")
+
+fig = px.bar(
+    results_df.melt(id_vars='Model', var_name='Metric', value_name='Score'),
+    x='Model', y='Score', color='Metric',
+    barmode='group', height=400,
+    title='Model Performance Comparison',
+    color_discrete_sequence=px.colors.qualitative.Set2
+)
+fig.update_layout(legend=dict(orientation='h', yanchor='bottom', y=1.02))
+st.plotly_chart(fig, use_container_width=True)
+
+# Confusion Matrix for best model
+st.divider()
+st.markdown(f"### Confusion Matrix - {best_name}")
+
+best_model = models[best_name]
+y_pred_best = best_model.predict(X_test)
+cm = confusion_matrix(y_test, y_pred_best)
+
+fig = px.imshow(
+    cm,
+    text_auto=True,
+    title=f'Confusion Matrix: {best_name}',
+    labels=dict(x='Predicted', y='Actual'),
+    color_continuous_scale='Blues'
+)
+st.plotly_chart(fig, use_container_width=True)
+
+# Feature Importance for Random Forest
+if 'Random Forest' in models:
+    st.divider()
+    st.markdown("### 🌲 Random Forest - Feature Importance")
+    
+    importances = models['Random Forest'].feature_importances_
+    feat_imp = pd.DataFrame({
+        'Feature': features[:len(importances)],
+        'Importance': importances
+    }).sort_values('Importance', ascending=False)
+    
+    col1, col2 = st.columns([3, 2])
+    with col1:
+        fig = px.bar(
+            feat_imp, x='Feature', y='Importance',
+            title='Feature Importance (Random Forest)',
+            color='Importance',
+            color_continuous_scale='Greens'
+        )
+        fig.update_layout(xaxis_tickangle=-45, height=400)
+        st.plotly_chart(fig, use_container_width=True)
+    with col2:
+        st.dataframe(
+            feat_imp.style.bar(subset=['Importance'], color='lightgreen'),
+            use_container_width=True
+        )
+
+# Classification Report
+st.divider()
+st.markdown("### 📋 Classification Report")
+
+with st.expander("View Full Classification Report", expanded=False):
+    report = classification_report(
+        y_test, y_pred_best, 
+        target_names=le.classes_ if 'le' in dir() else None
+    )
+    st.code(report, language='text')
+
+# Download
+st.divider()
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.download_button(
+        "📥 Download Results",
+        results_df.to_csv(index=False),
+        "model_results.csv",
+        "text/csv"
+    )
+with col2:
+    if 'Random Forest' in models:
+        st.download_button(
+            "📥 Feature Importance",
+            feat_imp.to_csv(index=False),
+            "feature_importance.csv",
+            "text/csv"
+        )
+with col3:
+    st.download_button(
+        "📥 Classification Report",
+        classification_report(y_test, y_pred_best),
+        "classification_report.txt",
+        "text/plain"
+    )
+
+except Exception as e:
+st.error(f"❌ Training failed: {str(e)}")
     
     # ==================== CROSS VALIDATION PAGE ====================
     elif section == "📊 Cross Validation & Evaluation":
