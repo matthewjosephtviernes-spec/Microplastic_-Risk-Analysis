@@ -687,29 +687,16 @@ def main():
         with home_tab1:
             st.markdown("### 📤 Upload Dataset")
             
-            col1, col2 = st.columns([2, 1])
-            with col1:
-                uploaded_file = st.file_uploader(
-                    "Upload dataset (CSV/Excel)", 
-                    type=['csv','xlsx','xls'],
-                    help="Upload your microplastic risk dataset"
-                )
-                if uploaded_file:
-                    data = load_dataset(uploaded_file)
-                    if data is not None:
-                        st.success(f"✅ Dataset loaded successfully! Shape: {data.shape[0]} rows × {data.shape[1]} columns")
-            
-                       uploaded_file = st.file_uploader(
+            uploaded_file = st.file_uploader(
                 "Upload dataset (CSV/Excel)", 
                 type=['csv','xlsx','xls'],
                 help="Upload your microplastic risk dataset",
-                key="home_file_uploader"    # <-- ADD THIS
+                key="home_file_uploader"
             )
-            if st.session_state.data is not None:    # <-- Must be 12 spaces (3 indents)
-                df = st.session_state.data
-            
-            # Key metrics
-                col1, col2, col3, col4 = st.columns(4)    # <-- Must be 16 spaces (4 indents)
+            if uploaded_file:
+                data = load_dataset(uploaded_file)
+                if data is not None:
+                    st.success(f"✅ Dataset loaded successfully! Shape: {data.shape[0]} rows × {data.shape[1]} columns")
             
             if st.session_state.data is not None:
                 df = st.session_state.data
@@ -932,69 +919,27 @@ def main():
                         skewness = clean_data.skew()
                         if abs(skewness) < 0.5:
                             shape = "Approximately Symmetric"
-                            color = "green"
                             interpretation = "The distribution is roughly symmetric, suggesting balanced risk scores without significant skew."
                         elif skewness > 0.5:
                             shape = "Right-Skewed (Positive Skew)"
-                            color = "orange"
-                            interpretation = "The distribution has a longer right tail. More samples have higher risk scores, and the mean is likely greater than the median. Consider investigating what causes high risk scores."
+                            interpretation = "The distribution has a longer right tail. More samples have higher risk scores."
                         else:
                             shape = "Left-Skewed (Negative Skew)"
-                            color = "red"
-                            interpretation = "The distribution has a longer left tail. More samples have lower risk scores, and the mean is likely less than the median. Consider if risk assessment might be underestimating hazards."
+                            interpretation = "The distribution has a longer left tail. More samples have lower risk scores."
                         
-                        st.info(f"**Distribution Shape:** {shape}  \n**Interpretation:** {interpretation}")
+                        st.info(f"**Distribution Shape:** {shape}\n\n**Interpretation:** {interpretation}")
                         
                         # Normality test
                         from scipy.stats import normaltest
                         statistic, p_value = normaltest(clean_data)
                         if p_value < 0.05:
-                            st.warning(f"**Normality Test:** The distribution is NOT normal (p-value: {p_value:.4f}). Consider applying transformations for certain statistical analyses.")
+                            st.warning(f"**Normality Test:** NOT normal (p-value: {p_value:.4f})")
                         else:
-                            st.success(f"**Normality Test:** The distribution appears normal (p-value: {p_value:.4f}).")
-                        
-                        # Download options
-                        st.markdown("---")
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            # Download statistics
-                            stats_dict = {
-                                'Statistic': ['Count', 'Mean', 'Median', 'Std Dev', 'Skewness', 
-                                            'Kurtosis', 'Min', 'Q1', 'Q3', 'Max', 'IQR', 'Range',
-                                            'Variance', 'CV%'],
-                                'Value': [len(clean_data), clean_data.mean(), clean_data.median(), 
-                                        clean_data.std(), clean_data.skew(), clean_data.kurtosis(),
-                                        clean_data.min(), q1, q3, clean_data.max(), iqr,
-                                        clean_data.max() - clean_data.min(), clean_data.var(), cv]
-                            }
-                            stats_df = pd.DataFrame(stats_dict)
-                            csv_stats = stats_df.to_csv(index=False)
-                            st.download_button(
-                                label="📥 Download Statistics (CSV)",
-                                data=csv_stats,
-                                file_name="risk_score_statistics.csv",
-                                mime="text/csv",
-                                use_container_width=True
-                            )
-                        
-                        with col2:
-                            # Download cleaned data
-                            csv_data = clean_data.to_csv(index=False)
-                            st.download_button(
-                                label="📥 Download Clean Data (CSV)",
-                                data=csv_data,
-                                file_name="risk_score_clean_data.csv",
-                                mime="text/csv",
-                                use_container_width=True
-                            )
+                            st.success(f"**Normality Test:** Appears normal (p-value: {p_value:.4f})")
         
         # ==================== HOME TAB 3: MP Count vs Risk Score ====================
         with home_tab3:
             st.markdown("### 🔬 Explore the Relationship Between MP Count and Risk Score")
-            st.markdown("""
-            **Objective 2:** Investigate the correlation between Microplastic Count per Liter and Risk Score.
-            Understanding this relationship is crucial for risk assessment models.
-            """)
             
             if st.session_state.data is None: 
                 st.warning("⚠️ Upload data first!")
@@ -1009,7 +954,6 @@ def main():
                         missing_cols.append('Risk_Score')
                     st.error(f"❌ Missing required columns: {', '.join(missing_cols)}")
                 else:
-                    # Convert to numeric
                     df['MP_Count_per_L'] = pd.to_numeric(df['MP_Count_per_L'], errors='coerce')
                     df['Risk_Score'] = pd.to_numeric(df['Risk_Score'], errors='coerce')
                     clean = df.dropna(subset=['MP_Count_per_L', 'Risk_Score'])
@@ -1017,154 +961,26 @@ def main():
                     if len(clean) == 0:
                         st.error("❌ No valid data after cleaning!")
                     else:
-                        # Visualization tabs
-                        st1, st2, st3 = st.tabs([
-                            "📊 Scatter Plot", 
-                            "📈 Trend Analysis", 
-                            "📋 Correlation Analysis"
-                        ])
+                        st1, st2, st3 = st.tabs(["📊 Scatter Plot", "📈 Trend Analysis", "📋 Correlation Analysis"])
                         
                         with st1:
-                            st.markdown("#### Scatter Plot: MP Count vs Risk Score")
-                            
-                            # Color by Risk Level if available
-                            color_col = None
-                            if 'Risk_Level' in clean.columns:
-                                color_col = 'Risk_Level'
-                            
-                            fig = px.scatter(
-                                clean, 
-                                x='MP_Count_per_L', 
-                                y='Risk_Score',
-                                color=color_col,
-                                title='MP Count per Liter vs Risk Score',
-                                opacity=0.7,
-                                trendline=None,
-                                labels={
-                                    'MP_Count_per_L': 'MP Count per Liter',
-                                    'Risk_Score': 'Risk Score'
-                                }
-                            )
-                            fig.update_layout(height=500)
+                            color_col = 'Risk_Level' if 'Risk_Level' in clean.columns else None
+                            fig = px.scatter(clean, x='MP_Count_per_L', y='Risk_Score',
+                                           color=color_col, title='MP Count vs Risk Score', opacity=0.7)
                             st.plotly_chart(fig, use_container_width=True)
-                            
-                            # Statistics
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                st.metric("Mean MP Count", f"{clean['MP_Count_per_L'].mean():.2f}")
-                                st.metric("Std MP Count", f"{clean['MP_Count_per_L'].std():.2f}")
-                            with col2:
-                                st.metric("Mean Risk Score", f"{clean['Risk_Score'].mean():.2f}")
-                                st.metric("Std Risk Score", f"{clean['Risk_Score'].std():.2f}")
                         
                         with st2:
-                            st.markdown("#### Trend Analysis")
-                            
-                            # Try different trendlines
-                            try:
-                                fig = px.scatter(
-                                    clean, 
-                                    x='MP_Count_per_L', 
-                                    y='Risk_Score',
-                                    color=color_col,
-                                    trendline='ols',
-                                    title='MP Count vs Risk Score with Linear Trend',
-                                    opacity=0.7
-                                )
-                                fig.update_layout(height=500)
-                                st.plotly_chart(fig, use_container_width=True)
-                                
-                                # Add LOWESS trendline
-                                st.markdown("**Alternative: LOWESS Smoother**")
-                                fig2 = px.scatter(
-                                    clean, 
-                                    x='MP_Count_per_L', 
-                                    y='Risk_Score',
-                                    color=color_col,
-                                    trendline='lowess',
-                                    title='MP Count vs Risk Score with LOWESS Trend',
-                                    opacity=0.7
-                                )
-                                fig2.update_layout(height=500)
-                                st.plotly_chart(fig2, use_container_width=True)
-                                
-                            except Exception as e:
-                                st.warning(f"Trendline calculation failed: {str(e)}")
+                            fig = px.scatter(clean, x='MP_Count_per_L', y='Risk_Score',
+                                           color=color_col, title='MP Count vs Risk Score', opacity=0.7)
+                            st.plotly_chart(fig, use_container_width=True)
                         
                         with st3:
-                            st.markdown("#### Correlation Analysis")
-                            
-                            # Calculate correlations
                             pearson_corr = clean['MP_Count_per_L'].corr(clean['Risk_Score'])
-                            spearman_corr = clean['MP_Count_per_L'].corr(clean['Risk_Score'], method='spearman')
-                            kendall_corr = clean['MP_Count_per_L'].corr(clean['Risk_Score'], method='kendall')
-                            
-                            col1, col2, col3 = st.columns(3)
-                            with col1:
-                                st.metric("Pearson Correlation", f"{pearson_corr:.4f}")
-                                if abs(pearson_corr) < 0.3:
-                                    st.caption("Weak correlation")
-                                elif abs(pearson_corr) < 0.7:
-                                    st.caption("Moderate correlation")
-                                else:
-                                    st.caption("Strong correlation")
-                            
-                            with col2:
-                                st.metric("Spearman Correlation", f"{spearman_corr:.4f}")
-                                st.caption("Monotonic relationship")
-                            
-                            with col3:
-                                st.metric("Kendall's Tau", f"{kendall_corr:.4f}")
-                                st.caption("Ordinal association")
-                            
-                            # Interpretation
-                            st.markdown("---")
-                            st.markdown("#### 📊 Interpretation")
-                            
-                            if abs(pearson_corr) > 0.5:
-                                st.warning("""
-                                **Strong Relationship Detected:**
-                                - MP Count is strongly correlated with Risk Score
-                                - MP Count could be a key predictor for risk assessment
-                                - Consider using MP Count as a primary feature in risk models
-                                """)
-                            else:
-                                st.info("""
-                                **Moderate/Weak Relationship:**
-                                - Other factors may be more important for risk assessment
-                                - Consider multivariate analysis to identify key predictors
-                                - MP Count alone may not be sufficient for accurate risk prediction
-                                """)
-                        
-                        # Advanced Analysis
-                        st.markdown("---")
-                        with st.expander("🔬 Advanced Analysis"):
-                            st.markdown("#### Regression Analysis")
-                            
-                            # Simple linear regression
-                            from sklearn.linear_model import LinearRegression
-                            X = clean[['MP_Count_per_L']].values
-                            y = clean['Risk_Score'].values
-                            
-                            reg = LinearRegression().fit(X, y)
-                            r2 = reg.score(X, y)
-                            
-                            st.metric("R² Score", f"{r2:.4f}")
-                            st.write(f"**Equation:** Risk_Score = {reg.intercept_:.4f} + ({reg.coef_[0]:.4f} × MP_Count_per_L)")
-                            
-                            st.write("""
-                            **Interpretation:**
-                            - For each unit increase in MP Count, Risk Score changes by the coefficient
-                            - R² indicates how well MP Count explains Risk Score variance
-                            """)
+                            st.metric("Pearson Correlation", f"{pearson_corr:.4f}")
         
         # ==================== HOME TAB 4: Risk Score by Risk Level ====================
         with home_tab4:
             st.markdown("### 📊 Investigate Risk Score Differences by Risk Level")
-            st.markdown("""
-            **Objective 3:** Analyze how Risk Score varies across different Risk Level categories.
-            This helps validate the risk level classification system.
-            """)
             
             if st.session_state.data is None: 
                 st.warning("⚠️ Upload data first!")
@@ -1172,74 +988,16 @@ def main():
                 df = st.session_state.data
                 
                 if 'Risk_Score' not in df.columns or 'Risk_Level' not in df.columns:
-                    missing_cols = []
-                    if 'Risk_Score' not in df.columns:
-                        missing_cols.append('Risk_Score')
-                    if 'Risk_Level' not in df.columns:
-                        missing_cols.append('Risk_Level')
-                    st.error(f"❌ Missing required columns: {', '.join(missing_cols)}")
+                    st.error("❌ Missing required columns!")
                 else:
-                    # Convert and clean
                     df['Risk_Score'] = pd.to_numeric(df['Risk_Score'], errors='coerce')
                     clean = df.dropna(subset=['Risk_Score', 'Risk_Level'])
                     clean['Risk_Level'] = clean['Risk_Level'].astype(str)
                     
-                    if len(clean) == 0:
-                        st.error("❌ No valid data after cleaning!")
-                    else:
-                        # Visualization
-                        st.markdown("#### Box Plot: Risk Score by Risk Level")
-                        
-                        fig = px.box(
-                            clean, 
-                            x='Risk_Level', 
-                            y='Risk_Score', 
-                            color='Risk_Level',
-                            title='Risk Score Distribution by Risk Level',
-                            points='outliers'
-                        )
-                        fig.update_layout(height=500, showlegend=False)
+                    if len(clean) > 0:
+                        fig = px.box(clean, x='Risk_Level', y='Risk_Score', color='Risk_Level',
+                                   title='Risk Score by Risk Level', points='outliers')
                         st.plotly_chart(fig, use_container_width=True)
-                        
-                        # Violin plot
-                        st.markdown("#### Violin Plot: Distribution Shape by Risk Level")
-                        fig2 = px.violin(
-                            clean,
-                            x='Risk_Level',
-                            y='Risk_Score',
-                            color='Risk_Level',
-                            title='Distribution Shape by Risk Level',
-                            box=True,
-                            points='all'
-                        )
-                        fig2.update_layout(height=500, showlegend=False)
-                        st.plotly_chart(fig2, use_container_width=True)
-                        
-                        # Statistics by Risk Level
-                        st.markdown("#### 📊 Statistics by Risk Level")
-                        
-                        stats_by_level = clean.groupby('Risk_Level')['Risk_Score'].agg([
-                            'count', 'mean', 'median', 'std', 'min', 'max'
-                        ]).round(4)
-                        
-                        stats_by_level.columns = ['Count', 'Mean', 'Median', 'Std Dev', 'Min', 'Max']
-                        st.dataframe(stats_by_level, use_container_width=True)
-                        
-                        # ANOVA test
-                        from scipy.stats import f_oneway
-                        
-                        risk_levels = clean['Risk_Level'].unique()
-                        if len(risk_levels) >= 2:
-                            groups = [clean[clean['Risk_Level'] == level]['Risk_Score'].values 
-                                     for level in risk_levels]
-                            f_stat, p_value = f_oneway(*groups)
-                            
-                            st.markdown(f"""
-                            #### Statistical Test (ANOVA)
-                            - **F-statistic:** {f_stat:.4f}
-                            - **P-value:** {p_value:.4f}
-                            - **Conclusion:** {'Significant differences exist between risk levels' if p_value < 0.05 else 'No significant differences between risk levels'}
-                            """)
         
         # ==================== HOME TAB 5: Data Quality Check ====================
         with home_tab5:
@@ -1250,7 +1008,6 @@ def main():
             else:
                 df = st.session_state.data
                 
-                # Quality metrics
                 col1, col2, col3, col4 = st.columns(4)
                 with col1:
                     missing_pct = (df.isnull().sum().sum() / (df.shape[0] * df.shape[1])) * 100
@@ -1263,33 +1020,6 @@ def main():
                     st.metric("Categorical Columns", len(df.select_dtypes(include=['object']).columns))
                 
                 st.markdown("---")
-                
-                # Missing values heatmap
-                st.markdown("#### Missing Values Pattern")
-                
-                if df.isnull().sum().sum() > 0:
-                    fig, ax = plt.subplots(figsize=(12, 6))
-                    sns.heatmap(df.isnull(), cbar=True, yticklabels=False, cmap='viridis')
-                    ax.set_title('Missing Values Pattern (Yellow = Missing)')
-                    st.pyplot(fig)
-                    plt.close()
-                else:
-                    st.success("✅ No missing values found!")
-                
-                # Data types summary
-                st.markdown("#### Data Types Distribution")
-                
-                dtype_counts = df.dtypes.value_counts()
-                fig, ax = plt.subplots(figsize=(8, 4))
-                dtype_counts.plot(kind='bar', color=['#3498db', '#e74c3c', '#2ecc71'])
-                ax.set_title('Distribution of Data Types')
-                ax.set_xlabel('Data Type')
-                ax.set_ylabel('Count')
-                plt.xticks(rotation=45)
-                st.pyplot(fig)
-                plt.close()
-                
-                # Descriptive statistics
                 st.markdown("#### Descriptive Statistics")
                 st.dataframe(df.describe(), use_container_width=True)
                 
