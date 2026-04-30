@@ -699,10 +699,11 @@ def main():
                     if data is not None:
                         st.success(f"✅ Dataset loaded successfully! Shape: {data.shape[0]} rows × {data.shape[1]} columns")
             
-            uploaded_file = st.file_uploader(
-                "Upload dataset (CSV/Excel)",    # <-- Make sure this label exists
+                       uploaded_file = st.file_uploader(
+                "Upload dataset (CSV/Excel)", 
                 type=['csv','xlsx','xls'],
-                help="Upload your microplastic risk dataset"
+                help="Upload your microplastic risk dataset",
+                key="home_file_uploader"    # <-- ADD THIS
             )
             if st.session_state.data is not None:    # <-- Must be 12 spaces (3 indents)
                 df = st.session_state.data
