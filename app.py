@@ -2427,9 +2427,141 @@ def main():
         st.divider()
         
         # =============================================================
-        # STEP 2: Prepare the Data (Split into Train/Test)
+        # STEP 2: Choose Classification Models
         # =============================================================
-        st.markdown("## 📊 Step 2: Prepare the Data")
+        st.markdown("## 🤖 Step 2: Choose Classification Models")
+        st.markdown("""
+        **Subtask:** Select at least three different classification models to train, 
+        considering their suitability for the dataset and task.
+        """)
+        
+        st.markdown("### 📋 Selected Classification Models")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown("""
+            <div style='background: linear-gradient(135deg, #0984e3, #74b9ff); color: white; padding: 1.5rem; border-radius: 10px; min-height: 280px;'>
+            <h3 style='margin-top: 0;'>📊 Model 1</h3>
+            <h2 style='margin: 10px 0;'>Logistic Regression</h2>
+            <hr style='border-color: rgba(255,255,255,0.3);'>
+            <p style='font-size: 0.9rem;'>
+            <strong>Type:</strong> Linear Model<br>
+            <strong>Best for:</strong> Multi-class classification<br><br>
+            A simple and interpretable linear model. Provides probabilities for each class 
+            and is computationally efficient. Suitable for multi-class classification tasks.
+            </p>
+            <p style='margin-top: 15px;'><strong>✅ SELECTED</strong></p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown("""
+            <div style='background: linear-gradient(135deg, #00b894, #55efc4); color: white; padding: 1.5rem; border-radius: 10px; min-height: 280px;'>
+            <h3 style='margin-top: 0;'>🌲 Model 2</h3>
+            <h2 style='margin: 10px 0;'>Random Forest</h2>
+            <hr style='border-color: rgba(255,255,255,0.3);'>
+            <p style='font-size: 0.9rem;'>
+            <strong>Type:</strong> Ensemble Method<br>
+            <strong>Best for:</strong> Non-linear relationships<br><br>
+            An ensemble method that builds multiple decision trees and combines their predictions. 
+            Generally robust to outliers and can capture non-linear relationships.
+            </p>
+            <p style='margin-top: 15px;'><strong>✅ SELECTED</strong></p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col3:
+            st.markdown("""
+            <div style='background: linear-gradient(135deg, #6c5ce7, #a29bfe); color: white; padding: 1.5rem; border-radius: 10px; min-height: 280px;'>
+            <h3 style='margin-top: 0;'>🚀 Model 3</h3>
+            <h2 style='margin: 10px 0;'>Gradient Boosting</h2>
+            <hr style='border-color: rgba(255,255,255,0.3);'>
+            <p style='font-size: 0.9rem;'>
+            <strong>Type:</strong> Ensemble Method<br>
+            <strong>Best for:</strong> High accuracy tasks<br><br>
+            A powerful ensemble method that builds trees sequentially, with each tree 
+            correcting the errors of the previous ones. Often provides high accuracy.
+            </p>
+            <p style='margin-top: 15px;'><strong>✅ SELECTED</strong></p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
+        # Model comparison table
+        st.markdown("### 📊 Model Comparison")
+        
+        model_comparison = pd.DataFrame({
+            'Model': ['Logistic Regression', 'Random Forest', 'Gradient Boosting'],
+            'Type': ['Linear Model', 'Ensemble (Bagging)', 'Ensemble (Boosting)'],
+            'Interpretability': ['⭐⭐⭐⭐⭐ High', '⭐⭐⭐ Medium', '⭐⭐ Low'],
+            'Handles Non-linear': ['❌ No', '✅ Yes', '✅ Yes'],
+            'Training Speed': ['⚡ Fast', '⚡⚡ Medium', '🐢 Slower'],
+            'Risk of Overfitting': ['✅ Low', '✅ Low', '⚠️ Higher'],
+            'Provides Probabilities': ['✅ Yes', '✅ Yes', '✅ Yes'],
+            'Handles Outliers': ['❌ Sensitive', '✅ Robust', '⚠️ Moderate']
+        })
+        
+        st.dataframe(model_comparison, use_container_width=True, hide_index=True)
+        
+        st.markdown("---")
+        
+        st.markdown("### 🎯 Why These Models Were Selected")
+        
+        st.markdown("""
+        **1. Logistic Regression**
+        - Simple baseline model that is easy to interpret
+        - Works well when features have linear relationships with the target
+        - Provides probability estimates for each class
+        - Computationally efficient for multi-class problems
+        
+        **2. Random Forest Classifier**
+        - Ensemble of decision trees that reduces overfitting
+        - Captures complex non-linear relationships in environmental data
+        - Robust to outliers in microplastic measurements
+        - Provides reliable feature importance scores
+        
+        **3. Gradient Boosting Classifier**
+        - Builds trees sequentially to correct previous errors
+        - Often achieves the highest predictive accuracy
+        - Handles mixed data types effectively
+        - Good for capturing subtle patterns in risk assessment data
+        
+        <div style='background: linear-gradient(135deg, #d4edda, #c3e6cb); padding: 1rem; border-radius: 8px; margin-top: 1rem;'>
+        <strong>✅ Summary:</strong> These three models provide a diverse range of approaches - 
+        from simple linear to complex ensemble methods - allowing us to compare performance 
+        and select the best model for microplastic risk prediction.
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Display selected models list
+        st.markdown("---")
+        st.markdown("### 📋 Selected Models List")
+        
+        selected_models = ['Logistic Regression', 'RandomForestClassifier', 'GradientBoostingClassifier']
+        
+        st.code(
+            "# Selected Classification Models:\n\n" +
+            "# 1. Logistic Regression: A simple and interpretable linear model, suitable for multi-class classification.\n" +
+            "# It provides probabilities for each class and is computationally efficient.\n\n" +
+            "# 2. RandomForestClassifier: An ensemble method that builds multiple decision trees and combines their predictions.\n" +
+            "# It is generally robust to outliers and can capture non-linear relationships.\n\n" +
+            "# 3. GradientBoostingClassifier: Another powerful ensemble method that builds trees sequentially,\n" +
+            "# with each tree correcting the errors of the previous ones. Often provides high accuracy.",
+            language='python'
+        )
+        
+        st.markdown("**Selected Classification Models:**")
+        for model_name in selected_models:
+            st.markdown("- " + model_name)
+        
+        st.divider()
+        
+        # =============================================================
+        # STEP 3: Prepare the Data (Split into Train/Test)
+        # =============================================================
+        st.markdown("## 📊 Step 3: Prepare the Data")
         st.markdown("Split the selected features and target variable into training and testing sets.")
         
         if len(features) == 0:
@@ -2516,25 +2648,27 @@ def main():
             
             if st.session_state.get('data_split', False):
                 st.divider()
-                st.success("Data has been split! Proceed to Step 3 to train models.")
+                st.success("Data has been split! Proceed to Step 4 to train models.")
         
         st.divider()
         
         # =============================================================
-        # STEP 3: Train Models
+        # STEP 4: Train Models
         # =============================================================
-        st.markdown("## 🚀 Step 3: Train Models")
-        st.markdown("Train multiple classification models on the prepared data.")
+        st.markdown("## 🚀 Step 4: Train Models")
+        st.markdown("Train the selected classification models on the prepared data.")
         
         if not st.session_state.get('data_split', False):
-            st.warning("Please complete Step 2 (Data Split) first.")
+            st.warning("Please complete Step 3 (Data Split) first.")
         else:
             X_train = st.session_state.X_train
             X_test = st.session_state.X_test
             y_train = st.session_state.y_train
             y_test = st.session_state.y_test
             
-            if st.button("🚀 Train Models", type="primary", use_container_width=True, key="train_btn"):
+            st.markdown("**Models to train:** Logistic Regression, Random Forest, Gradient Boosting")
+            
+            if st.button("🚀 Train All Models", type="primary", use_container_width=True, key="train_btn"):
                 with st.spinner('Training models...'):
                     try:
                         models = {}
@@ -2544,6 +2678,7 @@ def main():
                                 lr = LogisticRegression(random_state=42, max_iter=1000, class_weight='balanced', n_jobs=-1)
                                 lr.fit(X_train, y_train)
                                 models['Logistic Regression'] = lr
+                                st.success("Logistic Regression trained!")
                             except Exception as e:
                                 st.warning("Logistic Regression failed: " + str(e))
                         
@@ -2552,6 +2687,7 @@ def main():
                                 rf = RandomForestClassifier(n_estimators=100, random_state=42, class_weight='balanced', n_jobs=-1)
                                 rf.fit(X_train, y_train)
                                 models['Random Forest'] = rf
+                                st.success("Random Forest trained!")
                             except Exception as e:
                                 st.warning("Random Forest failed: " + str(e))
                         
@@ -2560,6 +2696,7 @@ def main():
                                 gb = GradientBoostingClassifier(n_estimators=100, random_state=42)
                                 gb.fit(X_train, y_train)
                                 models['Gradient Boosting'] = gb
+                                st.success("Gradient Boosting trained!")
                             except Exception as e:
                                 st.warning("Gradient Boosting failed: " + str(e))
                         
