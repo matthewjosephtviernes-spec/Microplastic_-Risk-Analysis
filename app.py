@@ -2603,14 +2603,13 @@ if 'Random Forest' in models:
 
 # Classification Report
 st.divider()
-st.markdown("### 📋 Classification Report")
-
-with st.expander("View Full Classification Report", expanded=False):
-    report = classification_report(
-        y_test, y_pred_best, 
-        target_names=le.classes_ if 'le' in dir() else None
-    )
-    st.code(report, language='text')
+                        # Classification Report
+                        st.divider()
+                        st.markdown("### 📋 Classification Report")
+                        
+                        with st.expander("View Full Classification Report", expanded=False):
+                            report = classification_report(y_test, y_pred_best)
+                            st.code(report, language='text')
 
 # Download
 st.divider()
@@ -2630,13 +2629,14 @@ with col2:
             "feature_importance.csv",
             "text/csv"
         )
-with col3:
-    st.download_button(
-        "📥 Classification Report",
-        classification_report(y_test, y_pred_best),
-        "classification_report.txt",
-        "text/plain"
-    )
+                        with col3:
+                            report_text = classification_report(y_test, y_pred_best)
+                            st.download_button(
+                                "📥 Classification Report",
+                                report_text,
+                                "classification_report.txt",
+                                "text/plain"
+                            )
 
 except Exception as e:
 st.error(f"❌ Training failed: {str(e)}")
