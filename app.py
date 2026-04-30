@@ -699,12 +699,14 @@ def main():
                     if data is not None:
                         st.success(f"✅ Dataset loaded successfully! Shape: {data.shape[0]} rows × {data.shape[1]} columns")
             
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                uploaded_file = st.file_uploader(...)
+                ...
+            
             with col2:
                 st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("🎲 Generate Sample Dataset", type="primary", use_container_width=True):
-                    st.session_state.data = generate_sample_data()
-                    st.success("✅ Sample dataset generated with realistic outliers!")
-                    st.rerun()
+                if st.button("🎲 Generate Sample Dataset", ...):
             
             if st.session_state.data is not None:
                 df = st.session_state.data
