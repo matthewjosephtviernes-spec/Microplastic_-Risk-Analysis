@@ -941,8 +941,9 @@ def main():
         with home_tab3:
             st.markdown("### 🔬 Explore the Relationship Between MP Count and Risk Score")
             st.markdown("""
-            **Objective 2:** Investigate the correlation between Microplastic Count per Liter and Risk Score.
-            Understanding this relationship is crucial for risk assessment models.
+            **Subtask:** Create a scatter plot to visualize the relationship between Risk_Score and MP_Count_per_L.
+            
+            This visualization helps understand how microplastic concentration relates to risk assessment scores.
             """)
             
             if st.session_state.data is None: 
@@ -958,6 +959,7 @@ def main():
                         missing_cols.append('Risk_Score')
                     st.error(f"❌ Missing required columns: {', '.join(missing_cols)}")
                 else:
+                    # Convert to numeric
                     df['MP_Count_per_L'] = pd.to_numeric(df['MP_Count_per_L'], errors='coerce')
                     df['Risk_Score'] = pd.to_numeric(df['Risk_Score'], errors='coerce')
                     clean = df.dropna(subset=['MP_Count_per_L', 'Risk_Score'])
@@ -965,11 +967,17 @@ def main():
                     if len(clean) == 0:
                         st.error("❌ No valid data after cleaning!")
                     else:
-                        st1, st2, st3 = st.tabs(["📊 Scatter Plot", "📈 Trend Analysis", "📋 Correlation Analysis"])
+                        # Sub-tabs
+                        st1, st2, st3 = st.tabs([
+                            "📊 Scatter Plot", 
+                            "📈 Trend Analysis", 
+                            "📋 Correlation Analysis"
+                        ])
                         
                         with st1:
-                            st.markdown("#### Scatter Plot: MP Count vs Risk Score")
+                            st.markdown("#### Scatter Plot: MP Count per L vs Risk Score")
                             
+                            # Interactive Plotly version
                             color_col = None
                             if 'Risk_Level' in clean.columns:
                                 color_col = 'Risk_Level'
@@ -979,24 +987,30 @@ def main():
                                 x='MP_Count_per_L', 
                                 y='Risk_Score',
                                 color=color_col,
-                                title='MP Count per Liter vs Risk Score',
+                                title='Relationship between MP Count per L and Risk Score',
                                 opacity=0.7,
                                 labels={
-                                    'MP_Count_per_L': 'MP Count per Liter',
+                                    'MP_Count_per_L': 'MP Count per L',
                                     'Risk_Score': 'Risk Score'
                                 }
                             )
                             fig.update_layout(height=500)
-                            st.plotly_chart(fig, use_container_width=True, key="scatter_mp_tab3")
+                            st.plotly_chart(fig, use_container_width=True, key="scatter_mp_risk_main")
                             
-                            # Statistics
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                st.metric("Mean MP Count", f"{clean['MP_Count_per_L'].mean():.2f}")
-                                st.metric("Std MP Count", f"{clean['MP_Count_per_L'].std():.2f}")
-                            with col2:
-                                st.metric("Mean Risk Score", f"{clean['Risk_Score'].mean():.2f}")
-                                st.metric("Std Risk Score", f"{clean['Risk_Score'].std():.2f}")
+                            st.markdown("---")
+                            
+                            # Static Matplotlib/Seaborn version
+                            st.markdown("#### 📈 Static Visualization (Matplotlib/Seaborn)")
+                            
+                            fig, ax = plt.subplots(figsize=(10, 6))
+                            sns.scatterplot(data=clean, x='MP_Count_per_L', y='Risk_Score', ax=ax)
+                            ax.set_title('Relationship between MP Count per L and Risk Score', fontsize=14, fontweight='bold')
+                            ax.set_xlabel('MP Count per L', fontsize=12)
+                            ax.set_ylabel('Risk Score', fontsize=12)
+                            ax.grid(True)
+                            plt.tight_layout()
+                            st.pyplot(fig)
+                            plt.close()
                         
                         with st2:
                             st.markdown("#### Trend Analysis")
@@ -1010,7 +1024,7 @@ def main():
                                 opacity=0.7
                             )
                             fig.update_layout(height=500)
-                            st.plotly_chart(fig, use_container_width=True, key="trend_mp_tab3")
+                            st.plotly_chart(fig, use_container_width=True, key="trend_mp_risk_main")
                         
                         with st3:
                             st.markdown("#### Correlation Analysis")
@@ -1044,13 +1058,22 @@ def main():
                                 st.warning("""
                                 **Strong Relationship Detected:**
                                 - MP Count is strongly correlated with Risk Score
+                                - Higher MP Count tends to correspond with higher Risk Scores
                                 - MP Count could be a key predictor for risk assessment
+                                """)
+                            elif abs(pearson_corr) > 0.3:
+                                st.info("""
+                                **Moderate Relationship Detected:**
+                                - There is a noticeable relationship between MP Count and Risk Score
+                                - Other factors likely also influence the Risk Score
+                                - Consider multivariate analysis for better prediction
                                 """)
                             else:
                                 st.info("""
-                                **Moderate/Weak Relationship:**
-                                - Other factors may be more important for risk assessment
-                                - Consider multivariate analysis to identify key predictors
+                                **Weak Relationship Detected:**
+                                - MP Count alone shows limited correlation with Risk Score
+                                - Risk assessment likely depends on multiple factors
+                                - Consider including additional features in your analysis
                                 """)
         
         # ==================== HOME TAB 4: Risk Score by Risk Level ====================
