@@ -3124,13 +3124,10 @@ def main():
                     st.download_button("📥 Summary TXT", summary, "cv_summary.txt", "text/plain")
         
         # =============================================================
-        # TAB 5: Visualizations (NEW)
-        # =============================================================
-        # =============================================================
-        # TAB 5: Visualizations (NEW)
+        # TAB 5: Visualizations
         # =============================================================
         with cv_tab5:
-            st.markdown("### 📈 Visualizations")
+            st.markdown("### 📈 Visualizations & Feature Analysis")
             st.markdown("Comprehensive visual comparison and feature importance analysis.")
             
             if not st.session_state.get('cv_ran', False):
@@ -3140,12 +3137,12 @@ def main():
                 performance_df = st.session_state.get('cv_performance_df', None)
                 fold_details = st.session_state.cv_fold_details
                 
-                # Sub-tabs for different visualizations
+                # Sub-tabs
                 viz_tab1, viz_tab2, viz_tab3, viz_tab4 = st.tabs([
                     "📊 Performance Charts", 
                     "🌲 Feature Importance", 
-                    "🔍 Confusion Matrices",
-                    "📈 Fold Analysis"
+                    "📊 Analyze Feature Relevance",
+                    "🔍 Confusion Matrices"
                 ])
                 
                 # ── Sub-Tab 1: Performance Charts ──
@@ -3160,7 +3157,6 @@ def main():
                             title='Test Set Performance',
                             color_discrete_sequence=px.colors.qualitative.Set2
                         )
-                        fig.update_layout(legend=dict(orientation='h', yanchor='bottom', y=1.02))
                         st.plotly_chart(fig, use_container_width=True)
                     
                     st.divider()
@@ -3168,14 +3164,11 @@ def main():
                     st.markdown("#### 🔄 Cross Validation Comparison")
                     
                     col1, col2 = st.columns(2)
-                    
                     with col1:
                         fig = go.Figure()
                         for _, row in cv_df.iterrows():
                             fig.add_trace(go.Bar(
-                                name=row['Model'],
-                                x=['Accuracy'],
-                                y=[row['Accuracy Mean']],
+                                name=row['Model'], x=['Accuracy'], y=[row['Accuracy Mean']],
                                 error_y=dict(type='data', array=[row['Accuracy Std']]),
                                 text=str(row['Accuracy Mean']) + ' ± ' + str(row['Accuracy Std'])
                             ))
@@ -3186,9 +3179,7 @@ def main():
                         fig = go.Figure()
                         for _, row in cv_df.iterrows():
                             fig.add_trace(go.Bar(
-                                name=row['Model'],
-                                x=['F1 Score'],
-                                y=[row['F1 Mean']],
+                                name=row['Model'], x=['F1 Score'], y=[row['F1 Mean']],
                                 error_y=dict(type='data', array=[row['F1 Std']]),
                                 text=str(row['F1 Mean']) + ' ± ' + str(row['F1 Std'])
                             ))
@@ -3197,134 +3188,291 @@ def main():
                     
                     st.divider()
                     
-                    st.markdown("#### 🎯 Radar Chart - All Metrics")
-                    
+                    st.markdown("#### 🎯 Radar Chart")
                     if performance_df is not None:
                         categories = ['Accuracy', 'Precision', 'Recall', 'F1-Score']
-                        
                         fig = go.Figure()
                         for _, row in performance_df.iterrows():
                             fig.add_trace(go.Scatterpolar(
                                 r=[row['Accuracy'], row['Precision'], row['Recall'], row['F1-Score']],
-                                theta=categories,
-                                fill='toself',
-                                name=row['Model']
+                                theta=categories, fill='toself', name=row['Model']
                             ))
-                        fig.update_layout(
-                            polar=dict(radialaxis=dict(visible=True, range=[0.9, 1.0])),
-                            height=400, showlegend=True
-                        )
+                        fig.update_layout(polar=dict(radialaxis=dict(range=[0.9, 1.0])), height=400)
                         st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Fold analysis
+                    st.divider()
+                    st.markdown("#### 📈 Best Model Fold-by-Fold")
+                    
+                    best_cv_name = cv_df.iloc[cv_df['F1 Mean'].idxmax()]['Model']
+                    if best_cv_name in fold_details:
+                        fd = fold_details[best_cv_name]
+                        fold_df = pd.DataFrame({
+                            'Fold': [str(i+1) for i in range(len(fd['Accuracy']))],
+                            'Accuracy': fd['Accuracy'].round(4),
+                            'F1 Score': fd['F1'].round(4)
+                        })
+                        
+                        col1, col2 = st.columns([3, 2])
+                        with col1:
+                            fig = go.Figure()
+                            fig.add_trace(go.Scatter(x=fold_df['Fold'], y=fold_df['Accuracy'],
+                                mode='lines+markers', name='Accuracy', line=dict(color='#0984e3', width=3)))
+                            fig.add_trace(go.Scatter(x=fold_df['Fold'], y=fold_df['F1 Score'],
+                                mode='lines+markers', name='F1', line=dict(color='#00b894', width=3)))
+                            fig.update_layout(title='Fold-by-Fold: ' + best_cv_name, yaxis_range=[0.5, 1.0], height=400)
+                            st.plotly_chart(fig, use_container_width=True)
+                        with col2:
+                            st.dataframe(fold_df, use_container_width=True, hide_index=True)
                 
                 # ── Sub-Tab 2: Feature Importance ──
                 with viz_tab2:
-                    st.markdown("### 🌲 Feature Importance Analysis")
-                    st.markdown("""
-                    **Subtask:** Extract feature importances or coefficients from the trained models.
+                    st.markdown("### 🌲 Feature Importance Extraction")
+                    st.markdown("Extract feature importances/coefficients from all trained models.")
                     
-                    - **Random Forest & Gradient Boosting:** Feature importances based on impurity reduction
-                    - **Logistic Regression:** Mean of absolute coefficients across classes
-                    """)
-                    
-                    # Get models from session
                     logistic_regression_model = st.session_state.cv_lr_model
                     random_forest_model = st.session_state.cv_rf_model
                     gradient_boosting_model = st.session_state.cv_gb_model
                     
-                    # Get feature names
                     features_list = st.session_state.get('cv_features', [])
                     if len(features_list) == 0:
                         features_list = [str(i) for i in range(len(random_forest_model.feature_importances_))]
                     
                     # Extract feature importances/coefficients
                     feature_relevance = {}
-                    
-                    # Random Forest
                     feature_relevance['Random Forest'] = random_forest_model.feature_importances_
-                    
-                    # Gradient Boosting
                     feature_relevance['Gradient Boosting'] = gradient_boosting_model.feature_importances_
-                    
-                    # Logistic Regression (mean of absolute coefficients across classes)
                     feature_relevance['Logistic Regression'] = np.mean(np.abs(logistic_regression_model.coef_), axis=0)
                     
-                    st.success("✅ Feature relevance extracted for all trained models.")
+                    st.success("✅ Feature relevance extracted for all models.")
                     
-                    st.divider()
+                    # Create pandas Series
+                    feature_relevance_series = {}
+                    for model_name, scores in feature_relevance.items():
+                        feature_relevance_series[model_name] = pd.Series(
+                            scores, index=features_list[:len(scores)]
+                        ).sort_values(ascending=False)
                     
-                    # Display feature importance for each model
+                    # Individual model tabs
                     model_tabs = st.tabs(["🌲 Random Forest", "🚀 Gradient Boosting", "📊 Logistic Regression"])
                     
-                    for i, (model_name, importances) in enumerate(feature_relevance.items()):
+                    for i, (model_name, series) in enumerate(feature_relevance_series.items()):
                         with model_tabs[i]:
-                            st.markdown("**" + model_name + " - Feature Importance**")
+                            st.markdown("**" + model_name + " - Top 15 Features**")
                             
-                            # Create dataframe
                             feat_df = pd.DataFrame({
-                                'Feature': features_list[:len(importances)],
-                                'Importance': importances
-                            }).sort_values('Importance', ascending=False)
-                            
-                            # Normalize for comparison
-                            if importances.sum() > 0:
-                                feat_df['Importance %'] = (feat_df['Importance'] / feat_df['Importance'].sum() * 100).round(2)
+                                'Feature': series.head(15).index,
+                                'Importance': series.head(15).values.round(6)
+                            })
                             
                             col1, col2 = st.columns([3, 2])
                             with col1:
-                                # Bar chart
-                                color_map = {'Random Forest': 'Greens', 'Gradient Boosting': 'Purples', 'Logistic Regression': 'Blues'}
-                                fig = px.bar(
-                                    feat_df.head(15), x='Feature', y='Importance',
-                                    title=model_name + ' - Top 15 Features',
-                                    color='Importance',
-                                    color_continuous_scale=color_map.get(model_name, 'Blues')
-                                )
+                                fig = px.bar(feat_df, x='Feature', y='Importance',
+                                           title=model_name + ' Feature Importance',
+                                           color='Importance', color_continuous_scale=['Blues', 'Greens', 'Purples'][i])
                                 fig.update_layout(xaxis_tickangle=-45, height=400)
                                 st.plotly_chart(fig, use_container_width=True)
                             with col2:
-                                st.dataframe(feat_df.head(15), use_container_width=True, hide_index=True)
+                                st.dataframe(feat_df, use_container_width=True, hide_index=True)
                     
+                    # Combined comparison
                     st.divider()
-                    
-                    # Combined Feature Importance Comparison
                     st.markdown("### 📊 Combined Feature Importance Comparison")
                     
-                    # Get top features from Random Forest
-                    rf_importances = feature_relevance['Random Forest']
-                    top_indices = np.argsort(rf_importances)[-10:][::-1]
-                    top_features = [features_list[i] if i < len(features_list) else str(i) for i in top_indices]
+                    rf_top = feature_relevance_series['Random Forest'].head(10).index.tolist()
                     
-                    combined_imp = pd.DataFrame({
-                        'Feature': top_features,
-                        'Random Forest': [feature_relevance['Random Forest'][i] for i in top_indices],
-                        'Gradient Boosting': [feature_relevance['Gradient Boosting'][i] for i in top_indices],
-                        'Logistic Regression': [feature_relevance['Logistic Regression'][i] for i in top_indices]
-                    })
-                    
-                    # Normalize each column
-                    for col in ['Random Forest', 'Gradient Boosting', 'Logistic Regression']:
-                        if combined_imp[col].sum() > 0:
-                            combined_imp[col] = (combined_imp[col] / combined_imp[col].sum() * 100).round(2)
+                    combined = pd.DataFrame({'Feature': rf_top})
+                    for model_name, series in feature_relevance_series.items():
+                        combined[model_name] = [series.get(f, 0) for f in rf_top]
+                        if combined[model_name].sum() > 0:
+                            combined[model_name] = (combined[model_name] / combined[model_name].sum() * 100).round(2)
                     
                     fig = px.bar(
-                        combined_imp.melt(id_vars='Feature', var_name='Model', value_name='Importance %'),
+                        combined.melt(id_vars='Feature', var_name='Model', value_name='Importance %'),
                         x='Feature', y='Importance %', color='Model',
-                        barmode='group', height=400,
-                        title='Top 10 Features - All Models Comparison'
+                        barmode='group', height=400, title='Top 10 Features - All Models'
                     )
                     fig.update_layout(xaxis_tickangle=-45)
                     st.plotly_chart(fig, use_container_width=True)
                     
-                    # Download
-                    st.download_button(
-                        "📥 Download Feature Importance",
-                        combined_imp.to_csv(index=False),
-                        "feature_importance_comparison.csv",
-                        "text/csv"
-                    )
+                    st.download_button("📥 Download Feature Importance", combined.to_csv(index=False),
+                                     "feature_importance.csv", "text/csv")
                 
-                # ── Sub-Tab 3: Confusion Matrices ──
+                # ── Sub-Tab 3: Analyze Feature Relevance ──
                 with viz_tab3:
+                    st.markdown("### 📊 Analyze Feature Relevance")
+                    st.markdown("""
+                    **Subtask:** Analyze and compare the feature relevance across different models.
+                    
+                    Display the top 10 features for each model and analyze the patterns.
+                    """)
+                    
+                    logistic_regression_model = st.session_state.cv_lr_model
+                    random_forest_model = st.session_state.cv_rf_model
+                    gradient_boosting_model = st.session_state.cv_gb_model
+                    
+                    features_list = st.session_state.get('cv_features', [])
+                    target_name = st.session_state.get('cv_target', 'Target')
+                    
+                    if len(features_list) == 0:
+                        features_list = [str(i) for i in range(len(random_forest_model.feature_importances_))]
+                    
+                    # Extract feature importances
+                    feature_relevance = {}
+                    feature_relevance['Random Forest'] = random_forest_model.feature_importances_
+                    feature_relevance['Gradient Boosting'] = gradient_boosting_model.feature_importances_
+                    feature_relevance['Logistic Regression'] = np.mean(np.abs(logistic_regression_model.coef_), axis=0)
+                    
+                    # Create pandas Series
+                    feature_relevance_series = {}
+                    for model_name, scores in feature_relevance.items():
+                        feature_relevance_series[model_name] = pd.Series(
+                            scores, index=features_list[:len(scores)]
+                        ).sort_values(ascending=False)
+                    
+                    n_top = 10
+                    
+                    st.markdown("### --- Top " + str(n_top) + " Features for '" + target_name + "' Models ---")
+                    
+                    # Display top features for each model
+                    for model_name, series in feature_relevance_series.items():
+                        st.markdown("**" + model_name + ":**")
+                        
+                        top_df = pd.DataFrame({
+                            'Rank': range(1, n_top + 1),
+                            'Feature': series.head(n_top).index,
+                            'Importance': series.head(n_top).values.round(6)
+                        })
+                        st.dataframe(top_df, use_container_width=True, hide_index=True)
+                        
+                        # Mini bar chart
+                        fig = px.bar(top_df, x='Feature', y='Importance',
+                                   title=model_name + ' - Top ' + str(n_top) + ' Features',
+                                   color='Importance', height=300)
+                        fig.update_layout(xaxis_tickangle=-45)
+                        st.plotly_chart(fig, use_container_width=True)
+                        
+                        st.markdown("---")
+                    
+                    # Analysis and Comparison
+                    st.markdown("### --- Analysis and Comparison of Feature Relevance ---")
+                    
+                    # Get common top features
+                    all_top_features = set()
+                    for series in feature_relevance_series.values():
+                        all_top_features.update(series.head(n_top).index.tolist())
+                    
+                    common_features = all_top_features.copy()
+                    for series in feature_relevance_series.values():
+                        common_features &= set(series.head(n_top).index.tolist())
+                    
+                    st.markdown("#### 📊 Common Top Features Across All Models:")
+                    if len(common_features) > 0:
+                        for feat in common_features:
+                            st.markdown("- " + str(feat))
+                    else:
+                        st.markdown("No features appear in top " + str(n_top) + " for all models.")
+                    
+                    st.markdown("#### 📈 Feature Overlap Analysis:")
+                    
+                    # Create overlap matrix
+                    model_names = list(feature_relevance_series.keys())
+                    overlap_data = []
+                    for m1 in model_names:
+                        row = []
+                        for m2 in model_names:
+                            set1 = set(feature_relevance_series[m1].head(n_top).index)
+                            set2 = set(feature_relevance_series[m2].head(n_top).index)
+                            overlap = len(set1 & set2)
+                            row.append(overlap)
+                        overlap_data.append(row)
+                    
+                    overlap_df = pd.DataFrame(overlap_data, index=model_names, columns=model_names)
+                    st.dataframe(overlap_df, use_container_width=True)
+                    
+                    st.markdown("""
+                    **Interpretation:** Higher numbers indicate more shared top features between models.
+                    """)
+                    
+                    # Detailed analysis
+                    st.markdown("#### 📝 Detailed Analysis")
+                    
+                    st.markdown("**Comparison for '" + target_name + "':**")
+                    
+                    # Find dominant features
+                    all_scores = {}
+                    for feat in all_top_features:
+                        all_scores[feat] = sum(series.get(feat, 0) for series in feature_relevance_series.values())
+                    
+                    dominant_features = sorted(all_scores, key=all_scores.get, reverse=True)[:5]
+                    
+                    st.markdown("**Most Dominant Features (highest combined importance):**")
+                    for i, feat in enumerate(dominant_features, 1):
+                        st.markdown(str(i) + ". **" + str(feat) + "** - Combined score: " + str(round(all_scores[feat], 6)))
+                    
+                    st.markdown("---")
+                    
+                    st.markdown("**Model Agreement Analysis:**")
+                    
+                    # Check feature type patterns
+                    risk_features = [f for f in all_top_features if 'Risk' in str(f)]
+                    density_features = [f for f in all_top_features if 'Density' in str(f) or 'Population' in str(f)]
+                    location_features = [f for f in all_top_features if 'Location' in str(f)]
+                    source_features = [f for f in all_top_features if 'Source' in str(f)]
+                    
+                    st.markdown("- **Risk-related features:** " + str(len(risk_features)) + " in top " + str(n_top))
+                    st.markdown("- **Population/Density features:** " + str(len(density_features)) + " in top " + str(n_top))
+                    st.markdown("- **Location features:** " + str(len(location_features)) + " in top " + str(n_top))
+                    st.markdown("- **Source features:** " + str(len(source_features)) + " in top " + str(n_top))
+                    
+                    st.markdown("---")
+                    
+                    st.markdown("**Summary Analysis:**")
+                    
+                    # Generate automatic analysis
+                    if len(risk_features) > len(density_features) and len(risk_features) > len(location_features):
+                        st.info("""
+                        **Key Finding:** Risk-related features dominate the top rankings across all models.
+                        This suggests that the target variable is strongly influenced by risk indicators.
+                        The models consistently identify risk-encoded features as the most predictive.
+                        """)
+                    elif len(density_features) > len(risk_features):
+                        st.info("""
+                        **Key Finding:** Population density features are the strongest predictors.
+                        Environmental and demographic factors appear to be more influential
+                        than direct risk indicators for this target variable.
+                        """)
+                    else:
+                        st.info("""
+                        **Key Finding:** A mix of feature types contributes to the predictions.
+                        Both risk-related and environmental features play important roles,
+                        suggesting a complex relationship with the target variable.
+                        """)
+                    
+                    if len(common_features) >= 5:
+                        st.success("""
+                        **High Model Agreement:** The models show strong agreement on the most important features,
+                        indicating reliable and consistent feature importance patterns.
+                        """)
+                    else:
+                        st.warning("""
+                        **Diverse Feature Preferences:** The models show different feature preferences,
+                        which may indicate that different algorithms capture different aspects
+                        of the data relationships.
+                        """)
+                    
+                    # Download
+                    st.divider()
+                    all_top_df = pd.DataFrame({
+                        'Feature': list(all_top_features),
+                        'Combined Score': [round(all_scores[f], 6) for f in all_top_features]
+                    }).sort_values('Combined Score', ascending=False)
+                    
+                    st.download_button("📥 Download Feature Analysis", all_top_df.to_csv(index=False),
+                                     "feature_relevance_analysis.csv", "text/csv")
+                
+                # ── Sub-Tab 4: Confusion Matrices ──
+                with viz_tab4:
                     st.markdown("#### 🔍 Confusion Matrices")
                     
                     X_test = st.session_state.cv_X_test
@@ -3336,115 +3484,25 @@ def main():
                         with cm_tab1:
                             cm = confusion_matrix(y_test, st.session_state.cv_lr_pred)
                             fig = px.imshow(cm, text_auto=True, title='Logistic Regression',
-                                          labels=dict(x='Predicted', y='Actual'),
-                                          color_continuous_scale='Blues')
+                                          labels=dict(x='Predicted', y='Actual'), color_continuous_scale='Blues')
                             st.plotly_chart(fig, use_container_width=True)
-                            
-                            # Classification report
                             with st.expander("Classification Report"):
-                                report = classification_report(y_test, st.session_state.cv_lr_pred)
-                                st.code(report, language='text')
+                                st.code(classification_report(y_test, st.session_state.cv_lr_pred), language='text')
                         
                         with cm_tab2:
                             cm = confusion_matrix(y_test, st.session_state.cv_rf_pred)
                             fig = px.imshow(cm, text_auto=True, title='Random Forest',
-                                          labels=dict(x='Predicted', y='Actual'),
-                                          color_continuous_scale='Greens')
+                                          labels=dict(x='Predicted', y='Actual'), color_continuous_scale='Greens')
                             st.plotly_chart(fig, use_container_width=True)
-                            
                             with st.expander("Classification Report"):
-                                report = classification_report(y_test, st.session_state.cv_rf_pred)
-                                st.code(report, language='text')
+                                st.code(classification_report(y_test, st.session_state.cv_rf_pred), language='text')
                         
                         with cm_tab3:
                             cm = confusion_matrix(y_test, st.session_state.cv_gb_pred)
                             fig = px.imshow(cm, text_auto=True, title='Gradient Boosting',
-                                          labels=dict(x='Predicted', y='Actual'),
-                                          color_continuous_scale='Purples')
+                                          labels=dict(x='Predicted', y='Actual'), color_continuous_scale='Purples')
                             st.plotly_chart(fig, use_container_width=True)
-                            
                             with st.expander("Classification Report"):
-                                report = classification_report(y_test, st.session_state.cv_gb_pred)
-                                st.code(report, language='text')
-                
-                # ── Sub-Tab 4: Fold Analysis ──
-                with viz_tab4:
-                    st.markdown("#### 📈 Fold-by-Fold Performance Analysis")
-                    
-                    best_cv_name = cv_df.iloc[cv_df['F1 Mean'].idxmax()]['Model']
-                    
-                    if best_cv_name in fold_details:
-                        fd = fold_details[best_cv_name]
-                        cv_folds = len(fd['Accuracy'])
-                        
-                        fold_df = pd.DataFrame({
-                            'Fold': [str(i+1) for i in range(cv_folds)],
-                            'Accuracy': fd['Accuracy'].round(4),
-                            'F1 Score': fd['F1'].round(4)
-                        })
-                        
-                        st.markdown("**Best Model: " + best_cv_name + "**")
-                        
-                        col1, col2 = st.columns([3, 2])
-                        with col1:
-                            fig = go.Figure()
-                            fig.add_trace(go.Scatter(
-                                x=fold_df['Fold'], y=fold_df['Accuracy'],
-                                mode='lines+markers', name='Accuracy',
-                                line=dict(color='#0984e3', width=3),
-                                marker=dict(size=10)
-                            ))
-                            fig.add_trace(go.Scatter(
-                                x=fold_df['Fold'], y=fold_df['F1 Score'],
-                                mode='lines+markers', name='F1 Score',
-                                line=dict(color='#00b894', width=3),
-                                marker=dict(size=10)
-                            ))
-                            fig.update_layout(
-                                title='Fold-by-Fold: ' + best_cv_name,
-                                yaxis_range=[0.5, 1.0], height=400,
-                                hovermode='x unified'
-                            )
-                            st.plotly_chart(fig, use_container_width=True)
-                        with col2:
-                            st.dataframe(fold_df, use_container_width=True, hide_index=True)
-                            
-                            st.metric("Mean Accuracy", str(round(fd['Accuracy'].mean(), 4)))
-                            st.metric("Std Accuracy", str(round(fd['Accuracy'].std(), 4)))
-                            st.metric("Mean F1", str(round(fd['F1'].mean(), 4)))
-                            st.metric("Std F1", str(round(fd['F1'].std(), 4)))
-                    
-                    # Show all models fold comparison if available
-                    st.divider()
-                    st.markdown("#### 📊 All Models - Fold Comparison")
-                    
-                    if len(fold_details) > 0:
-                        # Create comparison across folds
-                        first_model = list(fold_details.keys())[0]
-                        n_folds = len(fold_details[first_model]['Accuracy'])
-                        
-                        fold_compare = pd.DataFrame({'Fold': [str(i+1) for i in range(n_folds)]})
-                        for model_name, scores in fold_details.items():
-                            fold_compare[model_name + ' Acc'] = scores['Accuracy'].round(4)
-                            fold_compare[model_name + ' F1'] = scores['F1'].round(4)
-                        
-                        st.dataframe(fold_compare, use_container_width=True, hide_index=True)
-                        
-                        # Line chart comparing all models' F1 across folds
-                        fig = go.Figure()
-                        colors = ['#0984e3', '#00b894', '#6c5ce7']
-                        for i, (model_name, scores) in enumerate(fold_details.items()):
-                            fig.add_trace(go.Scatter(
-                                x=[str(j+1) for j in range(len(scores['F1']))],
-                                y=scores['F1'],
-                                mode='lines+markers',
-                                name=model_name,
-                                line=dict(color=colors[i], width=2)
-                            ))
-                        fig.update_layout(
-                            title='F1 Score Across Folds - All Models',
-                            yaxis_range=[0.5, 1.0], height=400
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
+                                st.code(classification_report(y_test, st.session_state.cv_gb_pred), language='text')
 if __name__ == "__main__":
     main()
