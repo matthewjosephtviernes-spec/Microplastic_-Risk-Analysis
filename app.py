@@ -1138,12 +1138,6 @@ def main():
         
         df = st.session_state.data.copy()
         
-        # Clean range values to midpoints
-        if 'Microplastic_Size_mm_midpoint' in df.columns:
-            df['Microplastic_Size_mm_midpoint'] = df['Microplastic_Size_mm_midpoint'].apply(extract_midpoint)
-        if 'Density_midpoint' in df.columns:
-            df['Density_midpoint'] = df['Density_midpoint'].apply(extract_midpoint)
-        
         p1, p2, p3, p4, p5 = st.tabs([
             "🎯 Address Outliers", 
             "📏 Feature Scaling", 
@@ -1234,6 +1228,8 @@ def main():
                         st.success(f"✅ Scaled {len(scale_cols)} columns!")
                         st.markdown("**First 5 rows of scaled data:**")
                         st.dataframe(df[scale_cols].head(), use_container_width=True)
+                        st.markdown("**Descriptive Statistics (After):**")
+                        st.dataframe(df[scale_cols].describe(), use_container_width=True)
         
         # ==================== TAB 3: Encode Categorical ====================
         with p3:
@@ -1270,156 +1266,81 @@ def main():
         
         # ==================== TAB 4: Transform Skewed ====================
         with p4:
-            st.markdown("###        with p4:
-            st.markdown("### 📊 Transform 📊 Transform Skewed Numerical Skewed Numerical Columns")
- Columns")
-            st            st.markdown("Check.markdown("Check skewness and apply skewness and apply log transformation log transformation if needed if needed.")
+            st.markdown("### 📊 Transform Skewed Numerical Columns")
+            st.markdown("Check skewness and apply log transformation if needed.")
             
-.")
+            all_numeric = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
+            all_numeric = [c for c in all_numeric if 'ID' not in c and 'Sample' not in c]
             
-            all            all_numeric_numeric = df = df.select_dtypes(.select_dtypes(include=['float64include=['float64', '', 'int64']).int64']).columns.tolistcolumns.tolist()
-            all_numeric =()
-            all_numeric = [c for c [c for c in all in all_numeric_numeric if ' if 'ID' not inID' not in c and c and 'Sample' not 'Sample' not in c in c]
-            
-]
-            
-            if            if len(all_numeric len(all_numeric) == 0) == 0:
-               :
-                st.w st.warning("arning("No numericalNo numerical columns found!")
+            if len(all_numeric) == 0:
+                st.warning("No numerical columns found!")
             else:
- columns found!")
-            else:
-                skew_cols                skew_cols = st = st.mult.multiseiselect(
-lect(
-                    "                    "Select columnsSelect columns to analyze to analyze:",
-:",
-                    all                    all_numeric_numeric,
-                    default=all_n,
-                    default=all_numeric[:umeric[:4] if len(all_n4] if len(all_numeric)umeric) > 4 > 4 else else all_numeric,
- all_numeric,
-                    key                    key="sk="skew_ew_analyzeanalyze_cols_cols"
-               "
+                skew_cols = st.multiselect(
+                    "Select columns to analyze:",
+                    all_numeric,
+                    default=all_numeric[:4] if len(all_numeric) > 4 else all_numeric,
+                    key="skew_analyze_cols"
                 )
                 
- )
-                
-                if len(s                if len(skewkew_cols_cols) > ) > 00:
-                   :
-                    st.mark st.markdown("down("**Sk**Skewnessewness before transformation:** before transformation:**")
-")
-                    skewness_b                    skewness_before =efore = df df[skew[skew_cols].sk_cols].skew()
-                    st.dataframe(skew()
-                    st.dataframe(skewnessewness_before_before.round(6), use_container_width=True)
+                if len(skew_cols) > 0:
+                    st.markdown("**Skewness before transformation:**")
+                    skewness_before = df[skew_cols].skew()
+                    st.dataframe(skewness_before.round(6), use_container_width=True)
                     
-.round(6), use_container_width=True)
+                    skewed_cols = skewness_before[abs(skewness_before) > 0.5].index.tolist()
                     
-                    skewed_cols = skewness_before[abs(s                    skewed_cols = skewness_beforekew[abs(skewness_before) > ness_before)0.5]. > 0.5].index.tindex.tolistolist()
-                    
-                    if()
-                    
- len(skew                    if len(skewed_cols)ed_cols) ==  == 0:
-                        st0:
-                        st.success(".success("✅ No✅ No skewed columns found!")
+                    if len(skewed_cols) == 0:
+                        st.success("✅ No skewed columns found!")
                     else:
-                        st.warning(f"⚠️ { skewed columns found!")
-                    else:
-                        st.warning(f"⚠️ {len(skewlen(skewed_coled_cols)}s)} skewed column skewed column(s): {', '.join(skewed_cols)}")
+                        st.warning(f"⚠️ {len(skewed_cols)} skewed column(s): {', '.join(skewed_cols)}")
                         
-                        if st.button("📊(s): {', '.join(skewed_cols)}")
-                        
-                        if st.button("📊 Apply Log Apply Log Transform", type=" Transform", type="primary",primary", key=" key="log_log_btn"):
-btn"):
+                        if st.button("📊 Apply Log Transform", type="primary", key="log_btn"):
                             df_transformed = df.copy()
-                            for                            df_transformed = df.copy()
-                            for col in col in skewed_col skewed_cols:
-                                dfs:
-                                df_transformed[col] = np.log_transformed[col] = np.log1p1p(df_trans(df_transformedformed[col[col]] - df - df_transformed_transformed[col[col].min].min())
-                ())
+                            for col in skewed_cols:
+                                df_transformed[col] = np.log1p(df_transformed[col] - df_transformed[col].min())
                             
-                            st.session            
-                            st.session_state.process_state.processed_dataed_data = df = df_transformed_transformed
-                           
-                            st.session_state.skew st.session_state.skewed_cols_transed_cols_transformed = skewed_colformed = skewed_cols
-s
+                            st.session_state.processed_data = df_transformed
+                            st.session_state.skewed_cols_transformed = skewed_cols
                             
+                            st.success("✅ Log transform applied!")
+                            st.markdown("**Skewness after transformation:**")
+                            skewness_after = df_transformed[skew_cols].skew()
+                            st.dataframe(skewness_after.round(6), use_container_width=True)
                             
-                            st                            st.success(".success("✅ Log transform applied✅ Log!")
-                            st.mark transform applied!")
-                            st.markdown("**Skewnessdown("**Skewness after transformation:**")
- after transformation:**")
-                            skew                            skewness_ness_after =after = df_trans df_transformedformed[skew_col[skew_colss].skew()
-                            st].skew()
-                            st.dataframe.dataframe(skewness_after.round(6), use_container_width=True(skewness_after.round(6), use_container_width=True)
-                )
-                            
-                            comparison_df = pd.DataFrame({
-                                'Column':            
                             comparison_df = pd.DataFrame({
                                 'Column': skew_cols,
-                                ' skew_cols,
-                                'Skewness BeforeSkewness Before': skew': skewness_before.valuesness_before.values.round(6),
-.round(6                                '),
-                                'SkewSkewness Afterness After': skewness_after.values.round(6),
-                                '': skewness_after.values.round(6),
-                                'Improved':Improved': ['✅ YES' if abs ['✅ YES' if abs(sk(skewness_afterewness_after[col]) < abs(skewness_before[col[col]) < abs(skewness_before]) else '⬜[col]) else ' NO' for col⬜ NO' for col in skew_cols]
+                                'Skewness Before': skewness_before.values.round(6),
+                                'Skewness After': skewness_after.values.round(6),
+                                'Improved': ['✅ YES' if abs(skewness_after[col]) < abs(skewness_before[col]) else '⬜ NO' for col in skew_cols]
                             })
-                            st.dataframe( in skew_cols]
-                            })
-                            st.dataframe(comparisoncomparison_df,_df, use_container use_container_width=True_width=True, hide, hide_index=True)
+                            st.dataframe(comparison_df, use_container_width=True, hide_index=True)
         
-_index=True)
-        
-        # ==================== TAB        # ==================== TAB 5: Summary 5: Summary ====================
- ====================
-        with        with p5 p5:
-           :
-            st.mark st.markdown("###down("### 📋 Preprocessing Summary")
+        # ==================== TAB 5: Summary ====================
+        with p5:
+            st.markdown("### 📋 Preprocessing Summary")
             
- 📋 Preprocessing Summary")
+            summary_items = []
             
-            summary            summary_items = []
+            if len(st.session_state.get('outlier_columns_processed', [])) > 0:
+                summary_items.append({'Step': '🎯 Address Outliers', 'Status': '✅', 'Details': f"{len(st.session_state.outlier_columns_processed)} columns"})
             
-_items = []
+            if st.session_state.get('scaled_columns') is not None:
+                summary_items.append({'Step': '📏 Feature Scaling', 'Status': '✅', 'Details': f"{len(st.session_state.scaled_columns)} columns"})
             
-            if len(st            if len(st.session_state.session_state.get('outlier_columns.get('outlier_columns_processed_processed', [])) > 0', [])) > 0:
-               :
-                summary_items summary_items.append({'.append({'Step':Step': ' '🎯 Address Outliers🎯 Address Outliers', 'Status': '✅', '', 'Status': '✅', 'Details':Details': f"{ f"{len(stlen(st.session_state.outlier_columns.session_state.outlier_columns_processed_processed)} columns"})
-)} columns"})
+            if st.session_state.get('encoded_data') is not None:
+                summary_items.append({'Step': '🔄 Encode Categorical', 'Status': '✅', 'Details': f"Shape: {st.session_state.data.shape} → {st.session_state.encoded_shape}"})
             
-                       
-            if st.session_state if st.session_state.get('scaled.get('scaled_columns_columns') is not None:
-                summary_items') is not None:
-                summary_items.append({'Step': '📏 Feature Scaling',.append({'Step': '📏 Feature Scaling', 'Status': ' 'Status': '✅', 'Details': f"{len(st.session_state.sc✅', 'Details': f"{len(st.session_state.scaled_aled_columns)}columns)} columns" columns"})
+            if len(st.session_state.get('skewed_cols_transformed', [])) > 0:
+                summary_items.append({'Step': '📊 Transform Skewed', 'Status': '✅', 'Details': f"{len(st.session_state.skewed_cols_transformed)} columns"})
             
-})
-            
-            if            if st.session_state.get('encoded_data') is not st.session_state.get('encoded_data') is not None None:
-               :
-                summary summary_items.append({'Step': '🔄_items.append({'Step': '🔄 Encode Encode Categorical Categorical', 'Status': '✅',', 'Status': '✅', 'Details': 'Details': f" f"Shape: {stShape: {st.session_state.session_state.data.shape.data.shape} →} → {st {st.session_state.session_state.encoded_shape}".encoded_shape}"})
-})
-            
-            
-            if            if len(st.session_state.get('skewed_col len(st.session_state.get('skewed_cols_transs_transformed',formed', [])) >  [])) > 0:
-                summary0:
-                summary_items.append_items.append({'Step': '({'Step': '📊 Transform Sk📊 Transform Skewed', 'ewed', 'Status':Status': '✅ '✅', '', 'Details':Details': f"{ f"{len(st.session_state.skewed_colslen(st.session_state.skewed_cols_transformed_transformed)} columns)} columns"})
-"})
-            
-                       
-            if summary if summary_items:
-_items:
-                st                st.dataframe.dataframe(pd.DataFrame(pd.DataFrame(summary(summary_items),_items), use_container_width=True use_container_width=True, hide, hide_index=True)
-               _index=True)
-                current_data current_data = st.session_state = st.session_state.processed.processed_data if_data if st.session st.session_state.processed_data_state.processed_data is not is not None else None else df
-                st df
-                st.metric.metric("Current("Current Shape", f"{ Shape", f"{current_data.shapecurrent_data.shape[0]}[0]} rows × {current rows × {_data.shape[1]} colscurrent_data.shape[1]} cols")
-               ")
-                csv = current_data.to_csv csv = current_data.to_csv(index=False)
-               (index=False)
-                st st.d.download_buttonownload_button("("📥 Download📥 Download Processed Data", Processed Data", data=c data=csv, file_name="processedsv, file_name_data.csv="processed_data.csv", m", mime="text/cime="sv")
-text/c            elsesv")
+            if summary_items:
+                st.dataframe(pd.DataFrame(summary_items), use_container_width=True, hide_index=True)
+                current_data = st.session_state.processed_data if st.session_state.processed_data is not None else df
+                st.metric("Current Shape", f"{current_data.shape[0]} rows × {current_data.shape[1]} cols")
+                csv = current_data.to_csv(index=False)
+                st.download_button("📥 Download Processed Data", data=csv, file_name="processed_data.csv", mime="text/csv")
             else:
-                st.info:
-                st.info("No("No preprocessing steps applied preprocessing steps applied yet yet.")
+                st.info("No preprocessing steps applied yet.")
     
     # ==================== FEATURE SELECTION PAGE ====================
     # ==================== FEATURE SELECTION PAGE ====================
