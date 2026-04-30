@@ -940,6 +940,10 @@ def main():
         # ==================== HOME TAB 3: MP Count vs Risk Score ====================
         with home_tab3:
             st.markdown("### 🔬 Explore the Relationship Between MP Count and Risk Score")
+            st.markdown("""
+            **Objective 2:** Investigate the correlation between Microplastic Count per Liter and Risk Score.
+            Understanding this relationship is crucial for risk assessment models.
+            """)
             
             if st.session_state.data is None: 
                 st.warning("⚠️ Upload data first!")
@@ -964,19 +968,90 @@ def main():
                         st1, st2, st3 = st.tabs(["📊 Scatter Plot", "📈 Trend Analysis", "📋 Correlation Analysis"])
                         
                         with st1:
-                            color_col = 'Risk_Level' if 'Risk_Level' in clean.columns else None
-                            fig = px.scatter(clean, x='MP_Count_per_L', y='Risk_Score',
-                                           color=color_col, title='MP Count vs Risk Score', opacity=0.7)
-                            st.plotly_chart(fig, use_container_width=True, key="scatter_mp_risk")
+                            st.markdown("#### Scatter Plot: MP Count vs Risk Score")
+                            
+                            color_col = None
+                            if 'Risk_Level' in clean.columns:
+                                color_col = 'Risk_Level'
+                            
+                            fig = px.scatter(
+                                clean, 
+                                x='MP_Count_per_L', 
+                                y='Risk_Score',
+                                color=color_col,
+                                title='MP Count per Liter vs Risk Score',
+                                opacity=0.7,
+                                labels={
+                                    'MP_Count_per_L': 'MP Count per Liter',
+                                    'Risk_Score': 'Risk Score'
+                                }
+                            )
+                            fig.update_layout(height=500)
+                            st.plotly_chart(fig, use_container_width=True, key="scatter_mp_tab3")
+                            
+                            # Statistics
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.metric("Mean MP Count", f"{clean['MP_Count_per_L'].mean():.2f}")
+                                st.metric("Std MP Count", f"{clean['MP_Count_per_L'].std():.2f}")
+                            with col2:
+                                st.metric("Mean Risk Score", f"{clean['Risk_Score'].mean():.2f}")
+                                st.metric("Std Risk Score", f"{clean['Risk_Score'].std():.2f}")
                         
                         with st2:
-                            fig = px.scatter(clean, x='MP_Count_per_L', y='Risk_Score',
-                                           color=color_col, title='MP Count vs Risk Score (Copy)', opacity=0.7)
-                            st.plotly_chart(fig, use_container_width=True, key="scatter_mp_risk_trend")
+                            st.markdown("#### Trend Analysis")
+                            
+                            fig = px.scatter(
+                                clean, 
+                                x='MP_Count_per_L', 
+                                y='Risk_Score',
+                                color=color_col,
+                                title='MP Count vs Risk Score with Trend',
+                                opacity=0.7
+                            )
+                            fig.update_layout(height=500)
+                            st.plotly_chart(fig, use_container_width=True, key="trend_mp_tab3")
                         
                         with st3:
+                            st.markdown("#### Correlation Analysis")
+                            
                             pearson_corr = clean['MP_Count_per_L'].corr(clean['Risk_Score'])
-                            st.metric("Pearson Correlation", f"{pearson_corr:.4f}")
+                            spearman_corr = clean['MP_Count_per_L'].corr(clean['Risk_Score'], method='spearman')
+                            kendall_corr = clean['MP_Count_per_L'].corr(clean['Risk_Score'], method='kendall')
+                            
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric("Pearson Correlation", f"{pearson_corr:.4f}")
+                                if abs(pearson_corr) < 0.3:
+                                    st.caption("Weak correlation")
+                                elif abs(pearson_corr) < 0.7:
+                                    st.caption("Moderate correlation")
+                                else:
+                                    st.caption("Strong correlation")
+                            
+                            with col2:
+                                st.metric("Spearman Correlation", f"{spearman_corr:.4f}")
+                                st.caption("Monotonic relationship")
+                            
+                            with col3:
+                                st.metric("Kendall's Tau", f"{kendall_corr:.4f}")
+                                st.caption("Ordinal association")
+                            
+                            st.markdown("---")
+                            st.markdown("#### 📊 Interpretation")
+                            
+                            if abs(pearson_corr) > 0.5:
+                                st.warning("""
+                                **Strong Relationship Detected:**
+                                - MP Count is strongly correlated with Risk Score
+                                - MP Count could be a key predictor for risk assessment
+                                """)
+                            else:
+                                st.info("""
+                                **Moderate/Weak Relationship:**
+                                - Other factors may be more important for risk assessment
+                                - Consider multivariate analysis to identify key predictors
+                                """)
         
         # ==================== HOME TAB 4: Risk Score by Risk Level ====================
         with home_tab4:
