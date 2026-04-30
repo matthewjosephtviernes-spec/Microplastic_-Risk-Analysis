@@ -1544,11 +1544,10 @@ def main():
             if non_numeric:
                 st.info(f"ℹ️ Skipped non-numeric columns: {', '.join(non_numeric)} (contain text/range values)")
             
-            if len(available_cols) == 0:
-                st.error("❌ None of the specified numerical columns found as numeric!")
-                st.write("Available numeric columns:", df.select_dtypes(include=['float64', 'int64']).columns.tolist())
+                       if len(available_cols) == 0:
+                st.error("❌ No numeric columns found!")
             else:
-                st.markdown(f"**📊 Numerical columns to analyze:** {', '.join(available_cols)}")
+                st.markdown(f"**📊 Columns to analyze:** {', '.join(available_cols)}")
                 
                 # Calculate and display skewness before transformation
                 st.markdown("---")
