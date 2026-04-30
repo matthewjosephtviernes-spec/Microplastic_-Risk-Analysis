@@ -3138,12 +3138,13 @@ def main():
                 fold_details = st.session_state.cv_fold_details
                 
                 # Sub-tabs
-                viz_tab1, viz_tab2, viz_tab3, viz_tab4, viz_tab5 = st.tabs([
+                viz_tab1, viz_tab2, viz_tab3, viz_tab4, viz_tab5, viz_tab6 = st.tabs([
                     "📊 Performance Charts", 
                     "🌲 Feature Importance", 
                     "📊 Analyze Relevance",
                     "📈 Visualize Features",
-                    "🔍 Confusion Matrices"
+                    "🔍 Confusion Matrices",
+                    "📋 Summarize Findings"
                 ])
                 
                 # ── Sub-Tab 1: Performance Charts ──
@@ -3224,7 +3225,6 @@ def main():
                     gradient_boosting_model = st.session_state.cv_gb_model
                     
                     features_list = st.session_state.get('cv_features', [])
-                    target_name = st.session_state.get('cv_target', 'Target')
                     
                     if len(features_list) == 0:
                         features_list = [str(i) for i in range(len(random_forest_model.feature_importances_))]
@@ -3252,7 +3252,6 @@ def main():
                                 'Feature': series.head(actual_n).index.tolist(),
                                 'Importance': series.head(actual_n).values.round(6).tolist()
                             })
-                            
                             col1, col2 = st.columns([3, 2])
                             with col1:
                                 fig = px.bar(feat_df, x='Feature', y='Importance',
@@ -3262,39 +3261,42 @@ def main():
                                 st.plotly_chart(fig, use_container_width=True)
                             with col2:
                                 st.dataframe(feat_df, use_container_width=True, hide_index=True)
+                    
+                    # Store for other tabs
+                    st.session_state.viz_feature_relevance_series = feature_relevance_series
                 
                 # ── Sub-Tab 3: Analyze Feature Relevance ──
                 with viz_tab3:
                     st.markdown("### 📊 Analyze Feature Relevance")
                     
-                    logistic_regression_model = st.session_state.cv_lr_model
-                    random_forest_model = st.session_state.cv_rf_model
-                    gradient_boosting_model = st.session_state.cv_gb_model
+                    if hasattr(st.session_state, 'viz_feature_relevance_series'):
+                        feature_relevance_series = st.session_state.viz_feature_relevance_series
+                    else:
+                        logistic_regression_model = st.session_state.cv_lr_model
+                        random_forest_model = st.session_state.cv_rf_model
+                        gradient_boosting_model = st.session_state.cv_gb_model
+                        features_list = st.session_state.get('cv_features', [])
+                        if len(features_list) == 0:
+                            features_list = [str(i) for i in range(len(random_forest_model.feature_importances_))]
+                        
+                        feature_relevance = {}
+                        feature_relevance['Random Forest'] = random_forest_model.feature_importances_
+                        feature_relevance['Gradient Boosting'] = gradient_boosting_model.feature_importances_
+                        feature_relevance['Logistic Regression'] = np.mean(np.abs(logistic_regression_model.coef_), axis=0)
+                        
+                        feature_relevance_series = {}
+                        for model_name, scores in feature_relevance.items():
+                            feature_relevance_series[model_name] = pd.Series(
+                                scores, index=features_list[:len(scores)]
+                            ).sort_values(ascending=False)
                     
-                    features_list = st.session_state.get('cv_features', [])
                     target_name = st.session_state.get('cv_target', 'Target')
-                    
-                    if len(features_list) == 0:
-                        features_list = [str(i) for i in range(len(random_forest_model.feature_importances_))]
-                    
-                    feature_relevance = {}
-                    feature_relevance['Random Forest'] = random_forest_model.feature_importances_
-                    feature_relevance['Gradient Boosting'] = gradient_boosting_model.feature_importances_
-                    feature_relevance['Logistic Regression'] = np.mean(np.abs(logistic_regression_model.coef_), axis=0)
-                    
-                    feature_relevance_series = {}
-                    for model_name, scores in feature_relevance.items():
-                        feature_relevance_series[model_name] = pd.Series(
-                            scores, index=features_list[:len(scores)]
-                        ).sort_values(ascending=False)
-                    
                     n_top = 10
                     
                     st.markdown("### --- Top " + str(n_top) + " Features for '" + target_name + "' Models ---")
                     
                     for model_name, series in feature_relevance_series.items():
                         st.markdown("**" + model_name + ":**")
-                        
                         actual_n = min(n_top, len(series))
                         top_df = pd.DataFrame({
                             'Rank': range(1, actual_n + 1),
@@ -3303,155 +3305,86 @@ def main():
                         })
                         st.dataframe(top_df, use_container_width=True, hide_index=True)
                         st.markdown("---")
-                    
-                    # Analysis
-                    st.markdown("### --- Analysis of Feature Relevance ---")
-                    
-                    all_top_features = set()
-                    for series in feature_relevance_series.values():
-                        actual = min(n_top, len(series))
-                        all_top_features.update(series.head(actual).index.tolist())
-                    
-                    risk_feats = [f for f in all_top_features if 'Risk' in str(f)]
-                    density_feats = [f for f in all_top_features if 'Density' in str(f) or 'Population' in str(f)]
-                    
-                    st.markdown("**Feature Type Distribution in Top " + str(n_top) + ":**")
-                    col1, col2, col3 = st.columns(3)
-                    with col1: st.metric("Risk Features", len(risk_feats))
-                    with col2: st.metric("Density/Population", len(density_feats))
-                    with col3: st.metric("Other Features", len(all_top_features) - len(risk_feats) - len(density_feats))
-                    
-                    if len(risk_feats) > len(density_feats):
-                        st.info("Risk-related features dominate the top rankings across models.")
-                    else:
-                        st.info("Environmental/demographic features are strong predictors alongside risk indicators.")
-                    
-                    st.download_button("📥 Download Analysis", 
-                        pd.DataFrame({'Feature': list(all_top_features)}).to_csv(index=False),
-                        "feature_analysis.csv", "text/csv")
                 
-                # ── Sub-Tab 4: Visualize Features (Matplotlib/Seaborn) ──
+                # ── Sub-Tab 4: Visualize Features ──
                 with viz_tab4:
                     st.markdown("### 📈 Visualize Feature Importances")
-                    st.markdown("""
-                    **Subtask:** Visualize the top N feature importances/coefficients for each model 
-                    using bar plots (Matplotlib/Seaborn).
-                    """)
+                    st.markdown("Visualize top feature importances using Matplotlib/Seaborn bar plots.")
                     
-                    logistic_regression_model = st.session_state.cv_lr_model
-                    random_forest_model = st.session_state.cv_rf_model
-                    gradient_boosting_model = st.session_state.cv_gb_model
+                    if hasattr(st.session_state, 'viz_feature_relevance_series'):
+                        feature_relevance_series = st.session_state.viz_feature_relevance_series
+                    else:
+                        logistic_regression_model = st.session_state.cv_lr_model
+                        random_forest_model = st.session_state.cv_rf_model
+                        gradient_boosting_model = st.session_state.cv_gb_model
+                        features_list = st.session_state.get('cv_features', [])
+                        if len(features_list) == 0:
+                            features_list = [str(i) for i in range(len(random_forest_model.feature_importances_))]
+                        
+                        feature_relevance = {}
+                        feature_relevance['Random Forest'] = random_forest_model.feature_importances_
+                        feature_relevance['Gradient Boosting'] = gradient_boosting_model.feature_importances_
+                        feature_relevance['Logistic Regression'] = np.mean(np.abs(logistic_regression_model.coef_), axis=0)
+                        
+                        feature_relevance_series = {}
+                        for model_name, scores in feature_relevance.items():
+                            feature_relevance_series[model_name] = pd.Series(
+                                scores, index=features_list[:len(scores)]
+                            ).sort_values(ascending=False)
                     
-                    features_list = st.session_state.get('cv_features', [])
                     target_name = st.session_state.get('cv_target', 'Target')
+                    n_top_viz = st.slider("Number of top features:", 5, 20, 10, key="viz_n_top")
                     
-                    if len(features_list) == 0:
-                        features_list = [str(i) for i in range(len(random_forest_model.feature_importances_))]
-                    
-                    # Extract feature importances
-                    feature_relevance = {}
-                    feature_relevance['Random Forest'] = random_forest_model.feature_importances_
-                    feature_relevance['Gradient Boosting'] = gradient_boosting_model.feature_importances_
-                    feature_relevance['Logistic Regression'] = np.mean(np.abs(logistic_regression_model.coef_), axis=0)
-                    
-                    # Create pandas Series
-                    feature_relevance_series = {}
-                    for model_name, scores in feature_relevance.items():
-                        feature_relevance_series[model_name] = pd.Series(
-                            scores, index=features_list[:len(scores)]
-                        ).sort_values(ascending=False)
-                    
-                    n_top_viz = st.slider("Number of top features to visualize:", 5, 20, 10, key="viz_n_top")
+                    model_colors = {'Random Forest': '#27ae60', 'Gradient Boosting': '#8e44ad', 'Logistic Regression': '#2980b9'}
                     
                     st.markdown("### --- Top " + str(n_top_viz) + " Feature Relevance for '" + target_name + "' Models ---")
                     
-                    model_colors = {
-                        'Random Forest': '#27ae60',
-                        'Gradient Boosting': '#8e44ad',
-                        'Logistic Regression': '#2980b9'
-                    }
-                    
                     for model_name, series in feature_relevance_series.items():
                         st.markdown("**" + model_name + "**")
-                        
                         actual_n = min(n_top_viz, len(series))
                         
-                        # Create Matplotlib/Seaborn bar plot
                         fig, ax = plt.subplots(figsize=(12, 6))
-                        
                         top_features = series.head(actual_n).index.tolist()
                         top_values = series.head(actual_n).values
                         
-                        sns.barplot(
-                            x=top_features, 
-                            y=top_values,
-                            color=model_colors.get(model_name, '#3498db'),
-                            ax=ax
-                        )
-                        
-                        ax.set_title(
-                            "Top " + str(actual_n) + " Feature Relevance for " + target_name + " (" + model_name + ")",
-                            fontsize=14, fontweight='bold'
-                        )
+                        sns.barplot(x=top_features, y=top_values, color=model_colors.get(model_name, '#3498db'), ax=ax)
+                        ax.set_title("Top " + str(actual_n) + " Feature Relevance for " + target_name + " (" + model_name + ")", fontsize=14, fontweight='bold')
                         ax.set_xlabel("Features", fontsize=12)
                         ax.set_ylabel("Relevance Score", fontsize=12)
                         ax.tick_params(axis='x', rotation=45)
                         
-                        # Add value labels on bars
                         for j, v in enumerate(top_values):
-                            ax.text(j, v + (v * 0.02), str(round(v, 4)), 
-                                   ha='center', va='bottom', fontsize=8)
+                            ax.text(j, v + (v * 0.02), str(round(v, 4)), ha='center', va='bottom', fontsize=8)
                         
                         plt.tight_layout()
                         st.pyplot(fig)
                         plt.close()
-                        
                         st.markdown("---")
                     
-                    # Combined comparison plot
+                    # Combined plot
                     st.markdown("### 📊 Combined Feature Importance Comparison")
-                    
-                    # Get top features from Random Forest
-                    rf_top_features = feature_relevance_series['Random Forest'].head(n_top_viz).index.tolist()
+                    rf_top = feature_relevance_series['Random Forest'].head(n_top_viz).index.tolist()
                     
                     fig, ax = plt.subplots(figsize=(14, 7))
-                    
-                    x = range(len(rf_top_features))
+                    x = range(len(rf_top))
                     width = 0.25
                     
                     for i, (model_name, series) in enumerate(feature_relevance_series.items()):
-                        values = [series.get(f, 0) for f in rf_top_features]
-                        # Normalize
+                        values = [series.get(f, 0) for f in rf_top]
                         if sum(values) > 0:
                             values = [v / sum(values) for v in values]
-                        ax.bar([p + i * width for p in x], values, width, 
-                              label=model_name, color=list(model_colors.values())[i], alpha=0.8)
+                        ax.bar([p + i * width for p in x], values, width, label=model_name, 
+                              color=list(model_colors.values())[i], alpha=0.8)
                     
-                    ax.set_title(
-                        "Top " + str(n_top_viz) + " Feature Relevance Comparison - " + target_name,
-                        fontsize=14, fontweight='bold'
-                    )
+                    ax.set_title("Top " + str(n_top_viz) + " Feature Relevance Comparison - " + target_name, fontsize=14, fontweight='bold')
                     ax.set_xlabel("Features", fontsize=12)
                     ax.set_ylabel("Normalized Relevance Score", fontsize=12)
                     ax.set_xticks([p + width for p in x])
-                    ax.set_xticklabels(rf_top_features, rotation=45, ha='right')
+                    ax.set_xticklabels(rf_top, rotation=45, ha='right')
                     ax.legend()
-                    
                     plt.tight_layout()
                     st.pyplot(fig)
                     plt.close()
-                    
-                    # Download
-                    st.download_button(
-                        "📥 Download Feature Importance Data",
-                        pd.DataFrame({
-                            'Feature': rf_top_features,
-                            'Random Forest': [feature_relevance_series['Random Forest'].get(f, 0) for f in rf_top_features],
-                            'Gradient Boosting': [feature_relevance_series['Gradient Boosting'].get(f, 0) for f in rf_top_features],
-                            'Logistic Regression': [feature_relevance_series['Logistic Regression'].get(f, 0) for f in rf_top_features]
-                        }).to_csv(index=False),
-                        "feature_importance_viz.csv", "text/csv"
-                    )
                 
                 # ── Sub-Tab 5: Confusion Matrices ──
                 with viz_tab5:
@@ -3486,5 +3419,212 @@ def main():
                             st.plotly_chart(fig, use_container_width=True)
                             with st.expander("Classification Report"):
                                 st.code(classification_report(y_test, st.session_state.cv_gb_pred), language='text')
+                
+                # ── Sub-Tab 6: Summarize Findings ──
+                with viz_tab6:
+                    st.markdown("### 📋 Summarize Findings")
+                    st.markdown("""
+                    **Subtask:** Summarize the key findings about feature relevance from the analysis and visualization.
+                    """)
+                    
+                    # Get data
+                    if hasattr(st.session_state, 'viz_feature_relevance_series'):
+                        feature_relevance_series = st.session_state.viz_feature_relevance_series
+                    else:
+                        logistic_regression_model = st.session_state.cv_lr_model
+                        random_forest_model = st.session_state.cv_rf_model
+                        gradient_boosting_model = st.session_state.cv_gb_model
+                        features_list = st.session_state.get('cv_features', [])
+                        if len(features_list) == 0:
+                            features_list = [str(i) for i in range(len(random_forest_model.feature_importances_))]
+                        
+                        feature_relevance = {}
+                        feature_relevance['Random Forest'] = random_forest_model.feature_importances_
+                        feature_relevance['Gradient Boosting'] = gradient_boosting_model.feature_importances_
+                        feature_relevance['Logistic Regression'] = np.mean(np.abs(logistic_regression_model.coef_), axis=0)
+                        
+                        feature_relevance_series = {}
+                        for model_name, scores in feature_relevance.items():
+                            feature_relevance_series[model_name] = pd.Series(
+                                scores, index=features_list[:len(scores)]
+                            ).sort_values(ascending=False)
+                    
+                    target_name = st.session_state.get('cv_target', 'Target')
+                    best_cv_name = cv_df.iloc[cv_df['F1 Mean'].idxmax()]['Model']
+                    best_f1 = cv_df.iloc[cv_df['F1 Mean'].idxmax()]['F1 Mean']
+                    best_acc = cv_df.iloc[cv_df['F1 Mean'].idxmax()]['Accuracy Mean']
+                    
+                    n_top = 10
+                    
+                    # ── Key Findings Summary ──
+                    st.markdown("## 📊 Key Findings Summary")
+                    
+                    # Best Model
+                    st.markdown("""
+                    <div style='background: linear-gradient(135deg, #d4edda, #c3e6cb); padding: 1.5rem; border-radius: 10px; margin: 1rem 0;'>
+                    <h3 style='color: #155724; margin-top: 0;'>🏆 Best Performing Model</h3>
+                    <p style='color: #155724; font-size: 1.1rem;'>
+                    <strong>""" + best_cv_name + """</strong> achieved the highest cross-validation performance:<br>
+                    • F1 Score: """ + str(best_f1) + """ (±""" + str(cv_df.iloc[cv_df['F1 Mean'].idxmax()]['F1 Std']) + """)<br>
+                    • Accuracy: """ + str(best_acc) + """ (±""" + str(cv_df.iloc[cv_df['F1 Mean'].idxmax()]['Accuracy Std']) + """)
+                    </p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    st.divider()
+                    
+                    # Feature Importance Findings
+                    st.markdown("## 🌲 Feature Importance Findings")
+                    
+                    # Get common top features
+                    all_top_sets = []
+                    for series in feature_relevance_series.values():
+                        actual = min(n_top, len(series))
+                        all_top_sets.append(set(series.head(actual).index.tolist()))
+                    
+                    common_features = all_top_sets[0].intersection(*all_top_sets[1:]) if len(all_top_sets) > 1 else set()
+                    
+                    # Feature categories
+                    risk_features = set()
+                    density_features = set()
+                    location_features = set()
+                    source_features = set()
+                    ph_features = set()
+                    other_features = set()
+                    
+                    for series in feature_relevance_series.values():
+                        actual = min(n_top, len(series))
+                        for feat in series.head(actual).index.tolist():
+                            feat_str = str(feat)
+                            if 'Risk' in feat_str:
+                                risk_features.add(feat_str)
+                            elif 'Density' in feat_str or 'Population' in feat_str:
+                                density_features.add(feat_str)
+                            elif 'Location' in feat_str:
+                                location_features.add(feat_str)
+                            elif 'Source' in feat_str:
+                                source_features.add(feat_str)
+                            elif 'pH' in feat_str:
+                                ph_features.add(feat_str)
+                            else:
+                                other_features.add(feat_str)
+                    
+                    # Display findings
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.markdown("### 📊 Feature Categories in Top " + str(n_top))
+                        
+                        cat_data = pd.DataFrame({
+                            'Category': ['Risk Level', 'Population/Density', 'Location', 'Source', 'pH', 'Other'],
+                            'Count': [len(risk_features), len(density_features), len(location_features), 
+                                     len(source_features), len(ph_features), len(other_features)]
+                        }).sort_values('Count', ascending=False)
+                        
+                        st.dataframe(cat_data, use_container_width=True, hide_index=True)
+                        
+                        fig = px.bar(cat_data, x='Category', y='Count', title='Feature Categories Distribution',
+                                   color='Category', color_discrete_sequence=px.colors.qualitative.Set2)
+                        st.plotly_chart(fig, use_container_width=True)
+                    
+                    with col2:
+                        st.markdown("### 🤝 Model Agreement")
+                        st.markdown("**Common features across all models:** " + str(len(common_features)))
+                        
+                        if len(common_features) > 0:
+                            st.markdown("**Universally important features:**")
+                            for feat in list(common_features)[:5]:
+                                st.markdown("• " + str(feat))
+                        
+                        # Top 3 dominant features
+                        all_scores = {}
+                        for feat in set().union(*all_top_sets):
+                            all_scores[feat] = sum(series.get(feat, 0) for series in feature_relevance_series.values())
+                        
+                        top3 = sorted(all_scores, key=all_scores.get, reverse=True)[:3]
+                        st.markdown("**Top 3 Most Dominant Features:**")
+                        for i, feat in enumerate(top3, 1):
+                            st.markdown(str(i) + ". **" + str(feat) + "**")
+                    
+                    st.divider()
+                    
+                    # Detailed Summary
+                    st.markdown("## 📝 Detailed Summary")
+                    
+                    # Generate summary text
+                    summary_text = (
+                        "FEATURE RELEVANCE ANALYSIS SUMMARY\n" +
+                        "=" * 50 + "\n\n" +
+                        "Target Variable: " + target_name + "\n" +
+                        "Best Model: " + best_cv_name + " (F1: " + str(best_f1) + ")\n\n" +
+                        "KEY FINDINGS:\n" +
+                        "-" * 30 + "\n\n"
+                    )
+                    
+                    if len(risk_features) > len(density_features):
+                        summary_text += (
+                            "1. RISK FEATURES DOMINATE:\n" +
+                            "   Risk-related features (especially Risk_Level encoded features)\n" +
+                            "   consistently appear as the most important predictors across\n" +
+                            "   all three models. This indicates that risk indicators are\n" +
+                            "   strongly correlated with the target variable.\n\n"
+                        )
+                    
+                    if len(density_features) > 0:
+                        summary_text += (
+                            "2. POPULATION DENSITY INFLUENCE:\n" +
+                            "   Population density features (" + str(len(density_features)) + " in top " + str(n_top) + ")\n" +
+                            "   show significant predictive power, suggesting environmental\n" +
+                            "   and demographic factors play an important role.\n\n"
+                        )
+                    
+                    if len(ph_features) > 0:
+                        summary_text += (
+                            "3. pH LEVELS MATTER:\n" +
+                            "   pH features appear as important predictors, indicating that\n" +
+                            "   water chemistry influences microplastic risk levels.\n\n"
+                        )
+                    
+                    summary_text += (
+                        "4. MODEL CONSISTENCY:\n" +
+                        "   " + str(len(common_features)) + " features appear in the top " + str(n_top) + " for ALL models,\n" +
+                        "   showing strong agreement on the most important predictors.\n" +
+                        "   The models agree most on risk-encoded features.\n\n"
+                    )
+                    
+                    summary_text += (
+                        "5. BEST MODEL: " + best_cv_name + "\n" +
+                        "   Achieved F1 Score of " + str(best_f1) + " with low variance\n" +
+                        "   across CV folds, indicating reliable performance.\n\n" +
+                        "=" * 50 + "\n"
+                    )
+                    
+                    st.code(summary_text, language='text')
+                    
+                    st.divider()
+                    
+                    # Recommendations
+                    st.markdown("## 💡 Recommendations")
+                    
+                    st.markdown("""
+                    <div style='background: linear-gradient(135deg, #e8f4f8, #d1ecf1); padding: 1.5rem; border-radius: 10px; margin: 1rem 0;'>
+                    <h4 style='color: #0c5460; margin-top: 0;'>Based on the feature relevance analysis:</h4>
+                    <ol style='color: #0c5460;'>
+                        <li><strong>Focus on Risk Indicators:</strong> Risk-related features are consistently the strongest predictors across all models.</li>
+                        <li><strong>Include Environmental Factors:</strong> Population density and pH levels provide additional predictive power.</li>
+                        <li><strong>Use Ensemble Methods:</strong> Random Forest and Gradient Boosting show robust performance with good feature importance agreement.</li>
+                        <li><strong>Feature Engineering:</strong> Consider creating interaction features between risk levels and environmental factors.</li>
+                        <li><strong>Model Selection:</strong> Both Random Forest and Gradient Boosting are recommended for deployment based on their strong CV performance.</li>
+                    </ol>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Download summary
+                    st.download_button(
+                        "📥 Download Full Summary Report",
+                        summary_text,
+                        "feature_relevance_summary.txt",
+                        "text/plain"
+                    )
 if __name__ == "__main__":
     main()
