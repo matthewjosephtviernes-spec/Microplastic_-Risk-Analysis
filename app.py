@@ -1164,35 +1164,58 @@ def main():
             "📋 Summary"
         ])
         
-        # ==================== PREPROCESSING TAB 1: Feature Scaling ====================
+        # ==================== TAB 1: Feature Scaling ====================
         with p1:
             st.markdown("### 📏 Feature Scaling")
             st.markdown("""
             **Subtask:** Apply feature scaling (Standardization) to the numerical columns.
             
             StandardScaler transforms the data to have mean=0 and standard deviation=1.
+            This is important for many machine learning algorithms that are sensitive to feature scales.
             """)
             
             numerical_cols = ['MP_Count_per_L', 'Risk_Score', 
                              'Microplastic_Size_mm_midpoint', 'Density_midpoint']
             
-            # FIXED: Only use columns that exist AND are numeric
+            # FIXED: Only use columns that exist AND are actually numeric
             available_cols = [col for col in numerical_cols if col in df.columns and df[col].dtype in ['float64', 'int64']]
             missing_cols = [col for col in numerical_cols if col not in df.columns]
             non_numeric = [col for col in numerical_cols if col in df.columns and df[col].dtype not in ['float64', 'int64']]
             
             if missing_cols:
-                st.warning(f"⚠️ Columns not found: {', '.join(missing_cols)}")
+                st.warning(f"⚠️ Some columns not found: {', '.join(missing_cols)}")
             if non_numeric:
-                st.info(f"ℹ️ Skipped non-numeric columns: {', '.join(non_numeric)}")
+                st.info(f"ℹ️ Skipped non-numeric columns: {', '.join(non_numeric)} (these contain text values like '0.1–5.0', 'Low–Medium')")
             
             if len(available_cols) == 0:
-                st.error("❌ No numeric columns found for scaling!")
-                st.write("Available numeric columns:", df.select_dtypes(include=['float64', 'int64']).columns.tolist())
+                st.error("❌ None of the specified numerical columns found as numeric!")
+                st.info(f"Available numeric columns: {', '.join(df.select_dtypes(include=['float64', 'int64']).columns.tolist())}")
             else:
                 st.markdown(f"**📊 Columns to scale:** {', '.join(available_cols)}")
-                st.markdown("**First 5 rows of original data:**")
+                
+                # Show data before scaling
+                st.markdown("---")
+                st.markdown("### 📋 Data Before Scaling")
+                st.markdown("**First 5 rows of original numerical data:**")
                 st.dataframe(df[available_cols].head(), use_container_width=True)
+                
+                # Show statistics before scaling
+                st.markdown("**Descriptive Statistics (Before Scaling):**")
+                st.dataframe(df[available_cols].describe(), use_container_width=True)
+                
+                st.markdown("---")
+                
+                # Apply StandardScaler
+                st.markdown("### 🔧 Apply StandardScaler")
+                st.markdown("""
+                **StandardScaler Formula:** 
+                - z = (x - μ) / σ
+                - where μ is the mean and σ is the standard deviation
+                
+                After scaling:
+                - Mean ≈ 0
+                - Standard Deviation ≈ 1
+                """)
                 
                 if st.button("📏 Apply StandardScaler", type="primary", key="scale_btn"):
                     with st.spinner('Applying StandardScaler...'):
@@ -1204,14 +1227,75 @@ def main():
                         st.session_state.scaled_columns = available_cols
                         
                         st.success(f"✅ Successfully scaled {len(available_cols)} columns!")
-                        st.markdown("**First 5 rows of scaled data:**")
+                        
+                        # Display the first few rows of the scaled numerical data
+                        st.markdown("---")
+                        st.markdown("### 📊 Scaled Data Results")
+                        
+                        st.markdown("**First 5 rows of scaled numerical data:**")
                         st.dataframe(df[available_cols].head(), use_container_width=True)
+                        
+                        # Show statistics after scaling
+                        st.markdown("**Descriptive Statistics (After Scaling):**")
+                        st.dataframe(df[available_cols].describe(), use_container_width=True)
+                        
+                        # Show scaling parameters
+                        st.markdown("**Scaling Parameters:**")
+                        scaling_params = pd.DataFrame({
+                            'Column': available_cols,
+                            'Mean (μ)': scaler.mean_.round(6),
+                            'Std (σ)': scaler.scale_.round(6)
+                        })
+                        st.dataframe(scaling_params, use_container_width=True, hide_index=True)
+                        
+                        # Visualize before and after
+                        st.markdown("---")
+                        st.markdown("### 📈 Visual Comparison")
+                        
+                        original_df = st.session_state.data.copy()
+                        
+                        for col in available_cols[:2]:
+                            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+                            
+                            # Before
+                            original_clean = original_df[col].dropna()
+                            sns.histplot(data=original_clean, kde=True, bins=30, 
+                                       color='#3498db', edgecolor='white', alpha=0.7, ax=ax1)
+                            ax1.set_title(f'{col} - Before Scaling\nMean: {original_clean.mean():.4f}, Std: {original_clean.std():.4f}', fontsize=12)
+                            ax1.set_xlabel(col)
+                            ax1.set_ylabel('Frequency')
+                            
+                            # After
+                            scaled_clean = df[col].dropna()
+                            sns.histplot(data=scaled_clean, kde=True, bins=30, 
+                                       color='#2ecc71', edgecolor='white', alpha=0.7, ax=ax2)
+                            ax2.set_title(f'{col} - After Scaling\nMean: {scaled_clean.mean():.4f}, Std: {scaled_clean.std():.4f}', fontsize=12)
+                            ax2.set_xlabel(col)
+                            ax2.set_ylabel('Frequency')
+                            
+                            plt.suptitle(f'Feature Scaling Comparison: {col}', fontsize=14, fontweight='bold')
+                            plt.tight_layout()
+                            st.pyplot(fig)
+                            plt.close()
+                        
+                        # Download scaled data
+                        st.markdown("---")
+                        csv_scaled = df[available_cols].to_csv(index=False)
+                        st.download_button(
+                            label="📥 Download Scaled Data (CSV)",
+                            data=csv_scaled,
+                            file_name="scaled_numerical_data.csv",
+                            mime="text/csv"
+                        )
         
-        # ==================== PREPROCESSING TAB 2: Categorical Encoding ====================
+        # ==================== TAB 2: Categorical Encoding ====================
         with p2:
             st.markdown("### 🔄 Categorical Encoding")
             st.markdown("""
             **Subtask:** Encode the categorical columns using one-hot encoding.
+            
+            One-hot encoding creates binary columns for each category, allowing machine learning 
+            algorithms to work with categorical data effectively.
             """)
             
             categorical_cols = ['Location', 'Shape', 'Polymer_Type', 'pH', 'Salinity', 
@@ -1222,37 +1306,117 @@ def main():
             missing_cats = [col for col in categorical_cols if col not in df.columns]
             
             if missing_cats:
-                st.warning(f"⚠️ Columns not found: {', '.join(missing_cats)}")
+                st.warning(f"⚠️ Some columns not found in dataset: {', '.join(missing_cats)}")
             
             if len(available_cats) == 0:
-                st.error("❌ No categorical columns found!")
+                st.error("❌ None of the specified categorical columns found!")
+                actual_cats = df.select_dtypes(include=['object']).columns.tolist()
+                st.info(f"Available categorical columns: {', '.join(actual_cats) if actual_cats else 'None found'}")
             else:
                 st.markdown(f"**📊 Categorical columns to encode ({len(available_cats)}):**")
-                st.markdown("**First 5 rows of original data:**")
+                
+                # Display columns info
+                cols_per_row = 3
+                for i in range(0, len(available_cats), cols_per_row):
+                    cols = st.columns(cols_per_row)
+                    for j, col_name in enumerate(available_cats[i:i+cols_per_row]):
+                        with cols[j]:
+                            unique_vals = df[col_name].nunique()
+                            st.info(f"**{col_name}**\n{unique_vals} unique values")
+                
+                st.markdown("---")
+                st.markdown("### 📋 Data Before Encoding")
+                st.markdown("**First 5 rows of original categorical data:**")
                 st.dataframe(df[available_cats].head(), use_container_width=True)
+                
+                st.markdown("---")
+                st.markdown("### 🔧 Apply One-Hot Encoding")
+                st.markdown("""
+                **One-Hot Encoding Process:**
+                - Each category value becomes a new binary column (0 or 1)
+                - `drop_first=True` removes the first category to avoid multicollinearity
+                - Original categorical columns are removed and replaced with encoded columns
+                """)
                 
                 if st.button("🔄 Apply One-Hot Encoding", type="primary", key="encode_btn"):
                     with st.spinner('Applying one-hot encoding...'):
                         df_encoded = pd.get_dummies(df, columns=available_cats, drop_first=True)
                         
+                        new_cols = [c for c in df_encoded.columns if c not in df.columns or c in available_cats]
+                        original_shape = df.shape
+                        encoded_shape = df_encoded.shape
+                        
                         st.session_state.processed_data = df_encoded
                         st.session_state.encoded_data = df_encoded
-                        st.session_state.encoded_shape = df_encoded.shape
+                        st.session_state.encoded_shape = encoded_shape
+                        st.session_state.encoded_new_cols = new_cols
                         st.session_state.encoded_original_cols = available_cats
                         
-                        st.success(f"✅ Encoding applied! Shape: {df.shape} → {df_encoded.shape}")
-                        st.markdown("**First 5 rows after encoding:**")
+                        st.success(f"✅ One-hot encoding applied successfully!")
+                        
+                        st.markdown("---")
+                        st.markdown("### 📊 Encoding Results")
+                        
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Original Shape", f"{original_shape[0]} × {original_shape[1]}")
+                        with col2:
+                            st.metric("Encoded Shape", f"{encoded_shape[0]} × {encoded_shape[1]}")
+                        with col3:
+                            st.metric("New Columns Added", encoded_shape[1] - original_shape[1])
+                        
+                        st.markdown("---")
+                        st.markdown("### First 5 rows of the DataFrame after one-hot encoding:")
                         st.dataframe(df_encoded.head(), use_container_width=True)
-                        st.markdown(f"**Shape:** {df_encoded.shape[0]} rows × {df_encoded.shape[1]} columns")
+                        
+                        st.markdown("### Shape of the DataFrame after one-hot encoding:")
+                        st.info(f"**Rows:** {encoded_shape[0]:,} | **Columns:** {encoded_shape[1]:,}")
+                        
+                        st.markdown("---")
+                        st.markdown("### 📋 New Encoded Columns Created")
+                        
+                        for cat in available_cats:
+                            related_cols = [c for c in new_cols if c.startswith(cat + '_')]
+                            if related_cols:
+                                with st.expander(f"📌 {cat} → {len(related_cols)} new columns"):
+                                    st.write(related_cols)
+                        
+                        # Download encoded data
+                        st.markdown("---")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            csv_encoded = df_encoded.to_csv(index=False)
+                            st.download_button(
+                                label="📥 Download Encoded Data (CSV)",
+                                data=csv_encoded,
+                                file_name="encoded_microplastic_data.csv",
+                                mime="text/csv",
+                                use_container_width=True
+                            )
+                        with col2:
+                            encoding_summary = pd.DataFrame({
+                                'Original Column': available_cats,
+                                'New Columns Created': [len([c for c in new_cols if c.startswith(cat + '_')]) for cat in available_cats]
+                            })
+                            csv_summary = encoding_summary.to_csv(index=False)
+                            st.download_button(
+                                label="📥 Download Encoding Summary (CSV)",
+                                data=csv_summary,
+                                file_name="encoding_summary.csv",
+                                mime="text/csv",
+                                use_container_width=True
+                            )
         
-        # ==================== PREPROCESSING TAB 3: Outlier Handling ====================
+        # ==================== TAB 3: Outlier Handling ====================
         with p3:
             st.markdown("### 🎯 Outlier Handling")
             st.markdown("""
-            **Subtask:** Identify and handle outliers using the IQR method.
+            **Subtask:** Identify and handle outliers in numerical columns using the IQR method.
             
             <div class='outlier-box outlier-before'>
-            <strong>📌 Method:</strong> IQR | Lower = Q1 - 1.5×IQR | Upper = Q3 + 1.5×IQR
+            <strong>📌 Method:</strong> Interquartile Range (IQR)<br>
+            <strong>Formula:</strong> Lower bound = Q1 - 1.5×IQR, Upper bound = Q3 + 1.5×IQR<br>
+            <strong>Strategy:</strong> Cap outliers at the upper and lower bounds
             </div>
             """, unsafe_allow_html=True)
             
@@ -1265,33 +1429,106 @@ def main():
             non_numeric = [col for col in specified_numerical_cols if col in df.columns and df[col].dtype not in ['float64', 'int64']]
             
             if missing_cols:
-                st.warning(f"⚠️ Columns not found: {', '.join(missing_cols)}")
+                st.warning(f"⚠️ Some columns not found: {', '.join(missing_cols)}")
             if non_numeric:
                 st.info(f"ℹ️ Skipped non-numeric columns: {', '.join(non_numeric)}")
             
             if len(available_cols) == 0:
-                st.error("❌ No numeric columns found for outlier handling!")
+                st.error("❌ None of the specified numerical columns found as numeric!")
+                st.info(f"Available numeric columns: {', '.join(df.select_dtypes(include=['float64', 'int64']).columns.tolist())}")
             else:
                 st.markdown(f"**📊 Columns to process:** {', '.join(available_cols)}")
-                st.markdown("**Descriptive Statistics (Before):**")
+                
+                # Step 1: Show current state
+                st.markdown("---")
+                st.markdown("### 📋 Step 1: Current Data with Outliers")
+                
+                st.markdown("**Descriptive Statistics (Before Outlier Handling):**")
                 st.dataframe(df[available_cols].describe(), use_container_width=True)
                 
+                # Detect outliers
+                outlier_info = detect_outliers_detailed(df, available_cols)
+                
+                outlier_summary = []
+                for col, info in outlier_info.items():
+                    outlier_summary.append({
+                        'Column': col,
+                        'Q1': f"{info['Q1']:.4f}",
+                        'Q3': f"{info['Q3']:.4f}",
+                        'IQR': f"{info['IQR']:.4f}",
+                        'Lower Bound': f"{info['lower_bound']:.4f}",
+                        'Upper Bound': f"{info['upper_bound']:.4f}",
+                        'Outliers Found': info['outlier_count'],
+                        'Outlier %': f"{info['outlier_percentage']:.1f}%"
+                    })
+                
+                st.markdown("**Outlier Detection Summary:**")
+                if outlier_summary:
+                    st.dataframe(pd.DataFrame(outlier_summary), use_container_width=True, hide_index=True)
+                
+                # Step 2: Handle outliers
+                st.markdown("---")
+                st.markdown("### 🔧 Step 2: Handle Outliers")
+                
                 if st.button("🔧 Apply Outlier Capping", type="primary", key="outlier_btn"):
-                    with st.spinner('Capping outliers...'):
+                    with st.spinner('Capping outliers using IQR method...'):
                         df_capped, stats_before, stats_after, outlier_bounds, outlier_counts = cap_outliers_iqr(df, available_cols)
                         
                         st.session_state.processed_data = df_capped
                         st.session_state.outlier_columns_processed = available_cols
+                        st.session_state.outlier_stats_before = stats_before
+                        st.session_state.outlier_stats_after = stats_after
+                        st.session_state.outlier_bounds = outlier_bounds
+                        st.session_state.outlier_counts = outlier_counts
                         
-                        st.success(f"✅ Outliers capped in {len(available_cols)} columns!")
-                        st.markdown("**Descriptive Statistics (After):**")
+                        st.success(f"✅ Successfully capped outliers in {len(available_cols)} columns!")
+                        
+                        # Step 3: Show results
+                        st.markdown("---")
+                        st.markdown("### 📊 Step 3: Results After Outlier Handling")
+                        
+                        st.markdown("**Descriptive Statistics (After Outlier Handling):**")
                         st.dataframe(df_capped[available_cols].describe(), use_container_width=True)
+                        
+                        # Show counts
+                        st.markdown("**Outliers Capped:**")
+                        counts_data = []
+                        for col, counts in outlier_counts.items():
+                            counts_data.append({
+                                'Column': col,
+                                'Below Bound': counts['below'],
+                                'Above Bound': counts['above'],
+                                'Total Capped': counts['total'],
+                                '% of Data': f"{counts['percentage']:.2f}%"
+                            })
+                        st.dataframe(pd.DataFrame(counts_data), use_container_width=True, hide_index=True)
+                        
+                        # Visual comparison
+                        st.markdown("**Visual Comparison (Before vs After):**")
+                        for col in available_cols:
+                            fig = create_outlier_boxplot_comparison(df, df_capped, col)
+                            if fig:
+                                st.pyplot(fig)
+                                plt.close()
+                        
+                        # Download options
+                        st.markdown("---")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            csv_before = df[available_cols].describe().to_csv()
+                            st.download_button("📥 Download Stats (Before)", data=csv_before, file_name="outlier_stats_before.csv", mime="text/csv")
+                        with col2:
+                            csv_after = df_capped[available_cols].describe().to_csv()
+                            st.download_button("📥 Download Stats (After)", data=csv_after, file_name="outlier_stats_after.csv", mime="text/csv")
         
-        # ==================== PREPROCESSING TAB 4: Skewness & Transform ====================
+        # ==================== TAB 4: Skewness & Transform ====================
         with p4:
             st.markdown("### 📊 Skewness Analysis & Log Transform")
             st.markdown("""
-            **Subtask:** Check for skewed numerical columns and apply log transformation if necessary.
+            **Subtask:** Check for skewed numerical columns and apply transformations (log transformation) if necessary.
+            
+            Calculate and display the skewness of the numerical columns, identify skewed columns, 
+            apply log transformation to skewed columns, and recalculate and display the skewness.
             """)
             
             numerical_cols = ['MP_Count_per_L', 'Risk_Score', 
@@ -1303,50 +1540,198 @@ def main():
             non_numeric = [col for col in numerical_cols if col in df.columns and df[col].dtype not in ['float64', 'int64']]
             
             if missing_cols:
-                st.warning(f"⚠️ Columns not found: {', '.join(missing_cols)}")
+                st.warning(f"⚠️ Some columns not found: {', '.join(missing_cols)}")
             if non_numeric:
-                st.info(f"ℹ️ Skipped non-numeric columns: {', '.join(non_numeric)}")
+                st.info(f"ℹ️ Skipped non-numeric columns: {', '.join(non_numeric)} (contain text/range values)")
             
             if len(available_cols) == 0:
-                st.error("❌ No numeric columns found for skewness analysis!")
+                st.error("❌ None of the specified numerical columns found as numeric!")
+                st.write("Available numeric columns:", df.select_dtypes(include=['float64', 'int64']).columns.tolist())
             else:
-                st.markdown(f"**📊 Columns to analyze:** {', '.join(available_cols)}")
+                st.markdown(f"**📊 Numerical columns to analyze:** {', '.join(available_cols)}")
                 
-                # Skewness before
+                # Calculate and display skewness before transformation
                 st.markdown("---")
                 st.markdown("### 📋 Skewness Before Transformation")
+                
                 skewness_before = df[available_cols].skew()
+                
+                st.markdown("**Skewness before transformation:**")
                 st.dataframe(skewness_before.round(6), use_container_width=True)
                 
-                # Identify skewed columns
+                # Identify skewed columns (threshold = 0.5)
                 skewed_cols = skewness_before[abs(skewness_before) > 0.5].index.tolist()
                 
+                st.markdown(f"**Threshold:** |skewness| > 0.5")
+                
                 if len(skewed_cols) == 0:
-                    st.success("✅ No skewed columns found!")
+                    st.success("✅ No skewed columns found! All columns have |skewness| ≤ 0.5.")
                 else:
-                    st.warning(f"⚠️ Found {len(skewed_cols)} skewed column(s): {', '.join(skewed_cols)}")
+                    st.warning(f"⚠️ Found {len(skewed_cols)} skewed column(s): **{', '.join(skewed_cols)}**")
                     
-                    if st.button("📊 Apply Log Transform", type="primary", key="log_btn"):
+                    for col in skewed_cols:
+                        direction = "Right (Positive)" if skewness_before[col] > 0 else "Left (Negative)"
+                        st.info(f"**{col}:** Skewness = {skewness_before[col]:.6f} → {direction} skew")
+                    
+                    # Visualization before
+                    st.markdown("---")
+                    st.markdown("### 📈 Distribution Before Transformation")
+                    
+                    num_cols_vis = min(len(skewed_cols), 2)
+                    fig, axes = plt.subplots(1, num_cols_vis, figsize=(7*num_cols_vis, 5))
+                    if num_cols_vis == 1:
+                        axes = [axes]
+                    
+                    for i, col in enumerate(skewed_cols[:num_cols_vis]):
+                        clean_data = df[col].dropna()
+                        sns.histplot(data=clean_data, kde=True, bins=30,
+                                   color='#ffeaa7', edgecolor='white', alpha=0.7, ax=axes[i])
+                        axes[i].set_title(f'{col}\nSkewness: {clean_data.skew():.6f}', fontsize=12, fontweight='bold')
+                        axes[i].set_xlabel(col)
+                        axes[i].set_ylabel('Frequency')
+                        axes[i].axvline(clean_data.mean(), color='red', linestyle='--', label=f'Mean: {clean_data.mean():.2f}')
+                        axes[i].axvline(clean_data.median(), color='green', linestyle='--', label=f'Median: {clean_data.median():.2f}')
+                        axes[i].legend()
+                    
+                    plt.suptitle('Skewed Columns - Before Transformation', fontsize=16, fontweight='bold')
+                    plt.tight_layout()
+                    st.pyplot(fig)
+                    plt.close()
+                    
+                    # Apply log transformation
+                    st.markdown("---")
+                    st.markdown("### 🔧 Apply Log Transformation")
+                    st.markdown("""
+                    **Transformation Formula:** `np.log1p(x - min(x))`
+                    
+                    This shifts values to positive range, then applies log1p to reduce skewness.
+                    """)
+                    
+                    if st.button("📊 Apply Log Transformation", type="primary", key="log_btn"):
                         with st.spinner('Applying log transformation...'):
                             df_transformed = df.copy()
+                            
                             for col in skewed_cols:
                                 df_transformed[col] = np.log1p(df_transformed[col] - df_transformed[col].min())
                             
                             st.session_state.processed_data = df_transformed
+                            st.session_state.skewness_before = skewness_before
+                            st.session_state.skewness_after = df_transformed[available_cols].skew()
                             st.session_state.skewed_cols_transformed = skewed_cols
                             
-                            st.success(f"✅ Log transform applied to {len(skewed_cols)} columns!")
-                            
-                            # Skewness after
+                            # Display skewness after
+                            st.markdown("---")
                             st.markdown("### 📊 Skewness After Transformation")
+                            
                             skewness_after = df_transformed[available_cols].skew()
+                            
+                            st.markdown("**Skewness after transformation:**")
+                            st.dataframe(skewness_after.round(6), use_container_width=True)
+                            
+                            # Comparison table
+                            st.markdown("---")
+                            st.markdown("### 📊 Before vs After Comparison")
                             
                             comparison_df = pd.DataFrame({
                                 'Column': available_cols,
-                                'Skewness Before': skewness_before.values.round(6),
-                                'Skewness After': skewness_after.values.round(6)
+                                'Skewness Before': skewness_before[available_cols].values.round(6),
+                                'Skewness After': skewness_after[available_cols].values.round(6),
+                                '|Change|': (abs(skewness_before[available_cols].values) - abs(skewness_after[available_cols].values)).round(6),
+                                'Improved': ['✅ YES' if abs(skewness_after[col]) < abs(skewness_before[col]) else '⬜ NO' for col in available_cols]
                             })
                             st.dataframe(comparison_df, use_container_width=True, hide_index=True)
+                            
+                            improved = [col for col in available_cols if abs(skewness_after[col]) < abs(skewness_before[col])]
+                            st.success(f"✅ Skewness reduced in {len(improved)} column(s): {', '.join(improved)}")
+                            
+                            # Visual comparison
+                            st.markdown("---")
+                            st.markdown("### 📈 Visual Comparison (Before vs After)")
+                            
+                            for col in skewed_cols:
+                                fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+                                
+                                clean_before = df[col].dropna()
+                                sns.histplot(data=clean_before, kde=True, bins=30,
+                                           color='#ffeaa7', edgecolor='white', alpha=0.7, ax=ax1)
+                                ax1.set_title(f'{col} - BEFORE\nSkewness: {clean_before.skew():.6f}', fontsize=12, fontweight='bold')
+                                ax1.set_xlabel(col)
+                                ax1.set_ylabel('Frequency')
+                                
+                                clean_after = df_transformed[col].dropna()
+                                sns.histplot(data=clean_after, kde=True, bins=30,
+                                           color='#55efc4', edgecolor='white', alpha=0.7, ax=ax2)
+                                ax2.set_title(f'{col} - AFTER\nSkewness: {clean_after.skew():.6f}', fontsize=12, fontweight='bold')
+                                ax2.set_xlabel(col)
+                                ax2.set_ylabel('Frequency')
+                                
+                                plt.suptitle(f'Log Transformation: {col}', fontsize=14, fontweight='bold')
+                                plt.tight_layout()
+                                st.pyplot(fig)
+                                plt.close()
+                            
+                            # Download
+                            st.markdown("---")
+                            csv_transformed = df_transformed[available_cols].to_csv(index=False)
+                            st.download_button(
+                                label="📥 Download Transformed Data (CSV)",
+                                data=csv_transformed,
+                                file_name="skewness_transformed_data.csv",
+                                mime="text/csv"
+                            )
+        
+        # ==================== TAB 5: Summary ====================
+        with p5:
+            st.markdown("### 📋 Preprocessing Summary")
+            
+            summary_items = []
+            
+            if st.session_state.get('scaled_columns') is not None:
+                summary_items.append({
+                    'Step': 'Feature Scaling (StandardScaler)',
+                    'Status': '✅',
+                    'Details': f"Scaled {len(st.session_state.scaled_columns)} columns: {', '.join(st.session_state.scaled_columns)}"
+                })
+            
+            if st.session_state.get('encoded_data') is not None:
+                summary_items.append({
+                    'Step': 'Categorical Encoding (One-Hot)',
+                    'Status': '✅',
+                    'Details': f"Encoded {len(st.session_state.encoded_original_cols)} columns. Shape: {st.session_state.data.shape} → {st.session_state.encoded_shape}"
+                })
+            
+            if len(st.session_state.get('outlier_columns_processed', [])) > 0:
+                total_outliers = sum(st.session_state.get('outlier_counts', {}).get(col, {}).get('total', 0) for col in st.session_state.outlier_columns_processed)
+                summary_items.append({
+                    'Step': 'Outlier Handling (IQR Capping)',
+                    'Status': '✅',
+                    'Details': f"Processed {len(st.session_state.outlier_columns_processed)} columns, capped {total_outliers} outliers"
+                })
+            
+            if len(st.session_state.get('skewed_cols_transformed', [])) > 0:
+                summary_items.append({
+                    'Step': 'Skewness Transform (Log)',
+                    'Status': '✅',
+                    'Details': f"Transformed {len(st.session_state.skewed_cols_transformed)} columns: {', '.join(st.session_state.skewed_cols_transformed)}"
+                })
+            
+            if summary_items:
+                st.markdown("#### Completed Preprocessing Steps")
+                st.dataframe(pd.DataFrame(summary_items), use_container_width=True, hide_index=True)
+                
+                current_data = st.session_state.processed_data if st.session_state.processed_data is not None else df
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Current Data Shape", f"{current_data.shape[0]:,} rows")
+                with col2:
+                    st.metric("Features", f"{current_data.shape[1]} columns")
+                
+                csv = current_data.to_csv(index=False)
+                st.download_button("📥 Download Processed Data", data=csv, 
+                                 file_name="processed_microplastic_data.csv", mime="text/csv")
+            else:
+                st.info("No preprocessing steps applied yet. Use the tabs above to preprocess your data.")
         
         # ==================== PREPROCESSING TAB 5: Summary ====================
         with p5:
