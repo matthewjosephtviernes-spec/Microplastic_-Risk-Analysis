@@ -1241,35 +1241,243 @@ def main():
         with p3:
             st.markdown("### 🎯 Outlier Handling")
             st.markdown("""
-            **Subtask:** Identify and handle outliers using the IQR method.
+            **Subtask:** Identify and handle outliers in the numerical columns 
+            (MP_Count_per_L, Risk_Score, Microplastic_Size_mm_midpoint, and Density_midpoint).
+            
+            **Reasoning:** I will use the IQR method to identify and handle outliers in the numerical columns. 
+            I will cap the outliers at the upper and lower bounds calculated by the IQR method. 
+            Then, I will display the descriptive statistics for these columns to show the effect of outlier handling.
             """)
             
-            specified_numerical_cols = ['MP_Count_per_L', 'Risk_Score', 
-                                        'Microplastic_Size_mm_midpoint', 'Density_midpoint']
+            # Define the numerical columns
+            numerical_cols = ['MP_Count_per_L', 'Risk_Score', 
+                             'Microplastic_Size_mm_midpoint', 'Density_midpoint']
             
-            available_cols = [col for col in specified_numerical_cols if col in df.columns and df[col].dtype in ['float64', 'int64']]
-            missing_cols = [col for col in specified_numerical_cols if col not in df.columns]
-            non_numeric = [col for col in specified_numerical_cols if col in df.columns and df[col].dtype not in ['float64', 'int64']]
+            # Check which columns exist AND are numeric
+            available_cols = [col for col in numerical_cols if col in df.columns and df[col].dtype in ['float64', 'int64']]
+            missing_cols = [col for col in numerical_cols if col not in df.columns]
+            non_numeric = [col for col in numerical_cols if col in df.columns and df[col].dtype not in ['float64', 'int64']]
             
             if missing_cols:
-                st.warning(f"⚠️ Columns not found: {', '.join(missing_cols)}")
+                st.warning(f"⚠️ Some columns not found in dataset: {', '.join(missing_cols)}")
             if non_numeric:
-                st.info(f"ℹ️ Skipped non-numeric columns: {', '.join(non_numeric)}")
+                st.info(f"ℹ️ Skipped non-numeric columns: {', '.join(non_numeric)} (these contain text values)")
             
             if len(available_cols) == 0:
-                st.error("❌ No numeric columns found for outlier handling!")
+                st.error("❌ None of the specified numerical columns found as numeric!")
+                st.info(f"Available numeric columns: {', '.join(df.select_dtypes(include=['float64', 'int64']).columns.tolist())}")
             else:
-                st.markdown(f"**📊 Columns to process:** {', '.join(available_cols)}")
-                st.markdown("**Descriptive Statistics (Before):**")
+                st.markdown(f"**📊 Numerical columns to process:** {', '.join(available_cols)}")
+                
+                # Show IQR method explanation
+                st.markdown("---")
+                st.markdown("### 📐 IQR Method Explanation")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown("""
+                    <div style='background-color: #fff3cd; padding: 1rem; border-radius: 8px;'>
+                    <strong>📌 IQR Formula:</strong><br>
+                    • Q1 = 25th percentile<br>
+                    • Q3 = 75th percentile<br>
+                    • IQR = Q3 - Q1<br>
+                    • Lower Bound = Q1 - 1.5 × IQR<br>
+                    • Upper Bound = Q3 + 1.5 × IQR
+                    </div>
+                    """, unsafe_allow_html=True)
+                with col2:
+                    st.markdown("""
+                    <div style='background-color: #d4edda; padding: 1rem; border-radius: 8px;'>
+                    <strong>✅ Strategy:</strong><br>
+                    • Values below lower bound → capped to lower bound<br>
+                    • Values above upper bound → capped to upper bound<br>
+                    • This preserves data while reducing outlier impact
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                # Step 1: Show data BEFORE outlier handling
+                st.markdown("---")
+                st.markdown("### 📋 Step 1: Data BEFORE Outlier Handling")
+                
+                st.markdown("**Descriptive statistics before handling outliers:**")
                 st.dataframe(df[available_cols].describe(), use_container_width=True)
                 
+                # Detect and display outliers
+                outlier_info = detect_outliers_detailed(df, available_cols)
+                
+                if outlier_info:
+                    st.markdown("**Outlier Detection Summary:**")
+                    outlier_summary = []
+                    for col, info in outlier_info.items():
+                        outlier_summary.append({
+                            'Column': col,
+                            'Q1': f"{info['Q1']:.4f}",
+                            'Q3': f"{info['Q3']:.4f}",
+                            'IQR': f"{info['IQR']:.4f}",
+                            'Lower Bound': f"{info['lower_bound']:.4f}",
+                            'Upper Bound': f"{info['upper_bound']:.4f}",
+                            'Outliers Found': info['outlier_count'],
+                            'Outlier %': f"{info['outlier_percentage']:.1f}%",
+                            'Below Bound': info['outliers_below'],
+                            'Above Bound': info['outliers_above']
+                        })
+                    st.dataframe(pd.DataFrame(outlier_summary), use_container_width=True, hide_index=True)
+                    
+                    # Box plots before
+                    st.markdown("**Box Plots with Outliers (Before):**")
+                    fig, axes = plt.subplots(1, len(available_cols), figsize=(5*len(available_cols), 5))
+                    if len(available_cols) == 1:
+                        axes = [axes]
+                    
+                    for i, col in enumerate(available_cols):
+                        clean_data = df[col].dropna()
+                        sns.boxplot(data=clean_data, color='#ffeaa7', width=0.3, ax=axes[i])
+                        axes[i].set_title(f'{col}', fontsize=12, fontweight='bold')
+                        axes[i].set_ylabel(col, fontsize=10)
+                    
+                    plt.suptitle('Before Outlier Handling - Box Plots', fontsize=16, fontweight='bold')
+                    plt.tight_layout()
+                    st.pyplot(fig)
+                    plt.close()
+                
+                # Step 2: Apply outlier capping
+                st.markdown("---")
+                st.markdown("### 🔧 Step 2: Handle Outliers")
+                
+                # Show the code
+                st.markdown("**Code Implementation:**")
+                st.code(
+                    "# Define the numerical columns\n" +
+                    "numerical_cols = ['MP_Count_per_L', 'Risk_Score', 'Microplastic_Size_mm_midpoint', 'Density_midpoint']\n\n" +
+                    "# Handle outliers using the IQR method (capping)\n" +
+                    "for col in numerical_cols:\n" +
+                    "    Q1 = df[col].quantile(0.25)\n" +
+                    "    Q3 = df[col].quantile(0.75)\n" +
+                    "    IQR = Q3 - Q1\n\n" +
+                    "    lower_bound = Q1 - 1.5 * IQR\n" +
+                    "    upper_bound = Q3 + 1.5 * IQR\n\n" +
+                    "    # Cap the outliers\n" +
+                    "    df[col] = df[col].clip(lower=lower_bound, upper=upper_bound)\n\n" +
+                    "# Display descriptive statistics after outlier handling\n" +
+                    'print("Descriptive statistics after handling outliers:")\n' +
+                    "display(df[numerical_cols].describe())",
+                    language='python'
+                )
+                
                 if st.button("🔧 Apply Outlier Capping", type="primary", key="outlier_btn"):
-                    df_capped, stats_before, stats_after, outlier_bounds, outlier_counts = cap_outliers_iqr(df, available_cols)
-                    st.session_state.processed_data = df_capped
-                    st.session_state.outlier_columns_processed = available_cols
-                    st.success(f"✅ Outliers capped in {len(available_cols)} columns!")
-                    st.markdown("**Descriptive Statistics (After):**")
-                    st.dataframe(df_capped[available_cols].describe(), use_container_width=True)
+                    with st.spinner('Capping outliers using IQR method...'):
+                        # Make a copy for before comparison
+                        df_before = df.copy()
+                        
+                        # Handle outliers using the IQR method (capping)
+                        for col in available_cols:
+                            Q1 = df[col].quantile(0.25)
+                            Q3 = df[col].quantile(0.75)
+                            IQR = Q3 - Q1
+                            
+                            lower_bound = Q1 - 1.5 * IQR
+                            upper_bound = Q3 + 1.5 * IQR
+                            
+                            # Cap the outliers
+                            df[col] = df[col].clip(lower=lower_bound, upper=upper_bound)
+                        
+                        # Store in session state
+                        st.session_state.processed_data = df
+                        st.session_state.outlier_columns_processed = available_cols
+                        
+                        # Step 3: Show results AFTER outlier handling
+                        st.markdown("---")
+                        st.markdown("### 📊 Step 3: Results AFTER Outlier Handling")
+                        
+                        # Display descriptive statistics after outlier handling
+                        st.markdown("**Descriptive statistics after handling outliers:**")
+                        st.dataframe(df[available_cols].describe(), use_container_width=True)
+                        
+                        # Count outliers capped
+                        st.markdown("**Outliers Capped per Column:**")
+                        capped_summary = []
+                        for col in available_cols:
+                            before_values = df_before[col].dropna()
+                            after_values = df[col].dropna()
+                            changed = (before_values != after_values).sum()
+                            capped_summary.append({
+                                'Column': col,
+                                'Values Capped': changed,
+                                '% of Data': f"{(changed/len(before_values)*100):.2f}%"
+                            })
+                        st.dataframe(pd.DataFrame(capped_summary), use_container_width=True, hide_index=True)
+                        
+                        # IQR bounds used
+                        st.markdown("**IQR Bounds Applied:**")
+                        bounds_data = []
+                        for col in available_cols:
+                            Q1 = df_before[col].quantile(0.25)
+                            Q3 = df_before[col].quantile(0.75)
+                            IQR = Q3 - Q1
+                            bounds_data.append({
+                                'Column': col,
+                                'Q1': f"{Q1:.4f}",
+                                'Q3': f"{Q3:.4f}",
+                                'IQR': f"{IQR:.4f}",
+                                'Lower Bound': f"{Q1 - 1.5*IQR:.4f}",
+                                'Upper Bound': f"{Q3 + 1.5*IQR:.4f}"
+                            })
+                        st.dataframe(pd.DataFrame(bounds_data), use_container_width=True, hide_index=True)
+                        
+                        # Visual comparison
+                        st.markdown("**Visual Comparison (Before vs After):**")
+                        for col in available_cols:
+                            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+                            
+                            # Before
+                            clean_before = df_before[col].dropna()
+                            sns.boxplot(data=clean_before, color='#ffeaa7', width=0.3, ax=ax1)
+                            ax1.set_title(f'{col} - Before', fontsize=14, fontweight='bold')
+                            ax1.set_ylabel(col)
+                            
+                            # After
+                            clean_after = df[col].dropna()
+                            sns.boxplot(data=clean_after, color='#55efc4', width=0.3, ax=ax2)
+                            ax2.set_title(f'{col} - After', fontsize=14, fontweight='bold')
+                            ax2.set_ylabel(col)
+                            
+                            plt.suptitle(f'Outlier Handling Comparison: {col}', fontsize=16, fontweight='bold')
+                            plt.tight_layout()
+                            st.pyplot(fig)
+                            plt.close()
+                        
+                        # Before vs After statistics comparison
+                        st.markdown("**Before vs After Statistics Comparison:**")
+                        comparison_stats = []
+                        for col in available_cols:
+                            before_stats = df_before[col].describe()
+                            after_stats = df[col].describe()
+                            comparison_stats.append({
+                                'Column': col,
+                                'Mean Before': f"{before_stats['mean']:.4f}",
+                                'Mean After': f"{after_stats['mean']:.4f}",
+                                'Std Before': f"{before_stats['std']:.4f}",
+                                'Std After': f"{after_stats['std']:.4f}",
+                                'Min Before': f"{before_stats['min']:.4f}",
+                                'Min After': f"{after_stats['min']:.4f}",
+                                'Max Before': f"{before_stats['max']:.4f}",
+                                'Max After': f"{after_stats['max']:.4f}"
+                            })
+                        st.dataframe(pd.DataFrame(comparison_stats), use_container_width=True, hide_index=True)
+                        
+                        st.success(f"✅ Successfully capped outliers in {len(available_cols)} columns!")
+                        
+                        # Download options
+                        st.markdown("---")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            csv_before = df_before[available_cols].describe().to_csv()
+                            st.download_button("📥 Download Stats (Before)", data=csv_before,
+                                             file_name="outlier_stats_before.csv", mime="text/csv")
+                        with col2:
+                            csv_after = df[available_cols].describe().to_csv()
+                            st.download_button("📥 Download Stats (After)", data=csv_after,
+                                             file_name="outlier_stats_after.csv", mime="text/csv")
         
         # ==================== TAB 4: Skewness & Transform ====================
         with p4:
