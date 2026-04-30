@@ -2524,11 +2524,21 @@ def main():
             
             if st.button("🔀 Split Data into Train/Test Sets", type="primary", use_container_width=True, key="split_btn"):
                 with st.spinner('Splitting data...'):
+                    # Check if stratification is possible
+                    try_stratify = y.copy()
+                    unique, counts = np.unique(try_stratify, return_counts=True)
+                    
+                    if len(unique) > 1 and all(c >= 2 for c in counts):
+                        stratify_param = y
+                    else:
+                        stratify_param = None
+                        st.warning("⚠️ Stratification disabled - some classes have fewer than 2 samples.")
+                    
                     X_train, X_test, y_train, y_test = train_test_split(
                         X_selected, y, 
                         test_size=test_size, 
                         random_state=42,
-                        stratify=y if len(np.unique(y)) > 1 else None
+                        stratify=stratify_param
                     )
                     
                     st.session_state.X_train = X_train
