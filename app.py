@@ -1409,6 +1409,192 @@ def main():
         
         df = st.session_state.data.copy()
         
+        p1, p2, p3, p4, p5 = st.tabs([
+            "📏 Feature Scaling", 
+            "🔄 Categorical Encoding", 
+            "🎯 Outlier Handling", 
+            "📊 Skewness & Transform", 
+            "📋 Summary"
+        ])
+        
+        # ==================== TAB 1: Feature Scaling ====================
+        with p1:
+            st.markdown("### 📏 Feature Scaling")
+            st.markdown("Scale numerical features to have mean=0 and variance=1")
+            
+            numerical_cols = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
+            numerical_cols = [c for c in numerical_cols if 'ID' not in c and 'Sample' not in c]
+            
+            if len(numerical_cols) == 0:
+                st.warning("No numerical columns found for scaling")
+            else:
+                selected_cols = st.multiselect(
+                    "Select columns to scale:",
+                    numerical_cols,
+                    default=numerical_cols[:5] if len(numerical_cols) > 5 else numerical_cols,
+                    key="scale_cols"
+                )
+                
+                if selected_cols and st.button("Apply Scaling", key="scale_btn"):
+                    scaler = StandardScaler()
+                    df[selected_cols] = scaler.fit_transform(df[selected_cols])
+                    st.session_state.processed_data = df
+                    st.session_state.scaler = scaler
+                    st.session_state.scaled_columns = selected_cols
+                    st.success(f"✅ Successfully scaled {len(selected_cols)} columns!")
+                    st.markdown("**Preview of scaled data:**")
+                    st.dataframe(df[selected_cols].head())
+        
+        # ==================== TAB 2: Categorical Encoding ====================
+        with p2:
+            st.markdown("### 🔄 Categorical Encoding")
+            st.markdown("Convert categorical variables to numerical using one-hot encoding")
+            
+            categorical_cols = df.select_dtypes(include=['object']).columns.tolist()
+            categorical_cols = [c for c in categorical_cols if 'ID' not in c and 'Sample' not in c]
+            
+            if len(categorical_cols) == 0:
+                st.info("No categorical columns found for encoding")
+            else:
+                selected_cats = st.multiselect(
+                    "Select categorical columns to encode:",
+                    categorical_cols,
+                    default=categorical_cols,
+                    key="encode_cols"
+                )
+                
+                if selected_cats and st.button("Apply Encoding", key="encode_btn"):
+                    df_encoded = pd.get_dummies(df, columns=selected_cats, drop_first=False)
+                    st.session_state.processed_data = df_encoded
+                    st.session_state.encoded_data = df_encoded
+                    st.session_state.encoded_shape = df_encoded.shape
+                    st.success(f"✅ One-hot encoding applied! Shape: {df.shape} → {df_encoded.shape}")
+                    st.info(f"Added {df_encoded.shape[1] - df.shape[1]} new columns")
+                    st.markdown("**Preview of encoded data:**")
+                    st.dataframe(df_encoded.head())
+        
+        # ==================== TAB 3: Outlier Handling ====================
+        with p3:
+            st.markdown("### 🎯 Outlier Handling")
+            st.markdown("""
+            **Subtask:** Identify and handle outliers in numerical columns using the IQR method.
+            """)
+            
+            numerical_cols = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
+            numerical_cols = [c for c in numerical_cols if 'ID' not in c and 'Sample' not in c]
+            
+            if len(numerical_cols) == 0:
+                st.warning("No numerical columns found for outlier handling")
+            else:
+                selected_cols = st.multiselect(
+                    "Select columns for outlier handling:",
+                    numerical_cols,
+                    default=numerical_cols[:4] if len(numerical_cols) > 4 else numerical_cols,
+                    key="outlier_cols"
+                )
+                
+                if len(selected_cols) > 0:
+                    st.markdown("**Descriptive Statistics (Before):**")
+                    st.dataframe(df[selected_cols].describe(), use_container_width=True)
+                    
+                    if st.button("🔧 Apply Outlier Capping", type="primary", key="outlier_btn"):
+                        df_capped, stats_before, stats_after, outlier_bounds, outlier_counts = cap_outliers_iqr(df, selected_cols)
+                        st.session_state.processed_data = df_capped
+                        st.session_state.outlier_columns_processed = selected_cols
+                        st.success(f"✅ Successfully capped outliers in {len(selected_cols)} columns!")
+                        st.markdown("**Descriptive Statistics (After):**")
+                        st.dataframe(df_capped[selected_cols].describe(), use_container_width=True)
+        
+        # ==================== TAB 4: Skewness & Transform ====================
+        with p4:
+            st.markdown("### 📊 Skewness Analysis & Log Transform")
+            st.markdown("Analyze and reduce skewness in numerical features")
+            
+            numerical_cols = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
+            numerical_cols = [c for c in numerical_cols if 'ID' not in c and 'Sample' not in c]
+            
+            if len(numerical_cols) == 0:
+                st.warning("No numerical columns for skewness analysis")
+            else:
+                skew_info = analyze_skewness(df, numerical_cols)
+                st.markdown("**Skewness Analysis:**")
+                st.dataframe(skew_info, use_container_width=True, hide_index=True)
+                
+                skewed_cols = skew_info[skew_info['Skewed'] == 'Yes']['Column'].tolist()
+                
+                if len(skewed_cols) == 0:
+                    st.success("✅ No highly skewed columns found!")
+                else:
+                    st.warning(f"Found {len(skewed_cols)} skewed columns")
+                    
+                    selected_skewed = st.multiselect(
+                        "Select columns for log transform:",
+                        skewed_cols,
+                        default=skewed_cols,
+                        key="skew_cols"
+                    )
+                    
+                    if selected_skewed and st.button("Apply Log Transform", key="log_btn"):
+                        df_transformed = apply_log_transform(df, selected_skewed)
+                        st.session_state.processed_data = df_transformed
+                        
+                        skew_before = df[selected_skewed].skew().values
+                        skew_after = df_transformed[selected_skewed].skew().values
+                        
+                        skew_comparison = pd.DataFrame({
+                            'Column': selected_skewed,
+                            'Skewness Before': skew_before,
+                            'Skewness After': skew_after,
+                            'Reduction': skew_before - skew_after
+                        }).round(4)
+                        
+                        st.markdown("**Skewness Comparison:**")
+                        st.dataframe(skew_comparison, use_container_width=True, hide_index=True)
+                        st.success("✅ Log transform applied!")
+        
+        # ==================== TAB 5: Summary ====================
+        with p5:
+            st.markdown("### 📋 Preprocessing Summary")
+            
+            summary_items = []
+            
+            if st.session_state.get('scaled_columns') is not None:
+                summary_items.append({
+                    'Step': 'Feature Scaling',
+                    'Status': '✅',
+                    'Details': f"Scaled {len(st.session_state.scaled_columns)} columns"
+                })
+            
+            if st.session_state.get('encoded_data') is not None:
+                summary_items.append({
+                    'Step': 'Categorical Encoding',
+                    'Status': '✅',
+                    'Details': f"Shape: {st.session_state.data.shape} → {st.session_state.encoded_shape}"
+                })
+            
+            if len(st.session_state.get('outlier_columns_processed', [])) > 0:
+                summary_items.append({
+                    'Step': 'Outlier Handling (IQR)',
+                    'Status': '✅',
+                    'Details': f"Processed {len(st.session_state.outlier_columns_processed)} columns"
+                })
+            
+            if summary_items:
+                st.markdown("#### Completed Preprocessing Steps")
+                st.dataframe(pd.DataFrame(summary_items), use_container_width=True, hide_index=True)
+                
+                current_data = st.session_state.processed_data if st.session_state.processed_data is not None else df
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Current Data Shape", f"{current_data.shape[0]:,} rows")
+                with col2:
+                    st.metric("Features", f"{current_data.shape[1]} columns")
+                
+                csv = current_data.to_csv(index=False)
+                st.download_button("📥 Download Processed Data", data=csv, file_name="processed_data.csv", mime="text/csv")
+            else:
+                st.info("No preprocessing steps applied yet. Use the tabs above to preprocess your data.")
         # Ready for step-by-step instructions
     
     # ==================== FEATURE SELECTION PAGE ====================
