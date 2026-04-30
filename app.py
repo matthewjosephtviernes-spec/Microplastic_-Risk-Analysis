@@ -2733,6 +2733,7 @@ def main():
                         if best_pred is not None:
                             st.download_button("📥 Report", report_text, "report.txt", "text/plain")
     # ==================== CROSS VALIDATION & EVALUATION PAGE ====================
+    # ==================== CROSS VALIDATION & EVALUATION PAGE ====================
     elif section == "📊 Cross Validation & Evaluation":
         st.markdown('<p class="section-header">📊 Cross Validation & Model Evaluation</p>', unsafe_allow_html=True)
         
@@ -2744,11 +2745,12 @@ def main():
         df = data.copy()
         
         # Tabs for each step - click instead of scroll
-        cv_tab1, cv_tab2, cv_tab3, cv_tab4 = st.tabs([
+        cv_tab1, cv_tab2, cv_tab3, cv_tab4, cv_tab5 = st.tabs([
             "⚙️ Configure", 
             "📊 Evaluate Models", 
             "🔄 K-Fold CV", 
-            "📋 Summary"
+            "📋 Summary",
+            "📈 Visualizations"
         ])
         
         # =============================================================
@@ -2950,15 +2952,6 @@ def main():
                         
                         st.success("🏆 **Best Model: " + best_name + "** (F1-Score: " + str(best_f1) + ")")
                         
-                        # Chart
-                        fig = px.bar(
-                            performance_df.melt(id_vars='Model', var_name='Metric', value_name='Score'),
-                            x='Model', y='Score', color='Metric',
-                            barmode='group', height=350,
-                            color_discrete_sequence=px.colors.qualitative.Set2
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
-                        
                         # Store
                         st.session_state.cv_lr_pred = lr_pred
                         st.session_state.cv_rf_pred = rf_pred
@@ -3048,54 +3041,15 @@ def main():
                             best_cv_idx = cv_df['F1 Mean'].idxmax()
                             best_cv_name = cv_df.iloc[best_cv_idx]['Model']
                             best_cv_f1 = cv_df.iloc[best_cv_idx]['F1 Mean']
-                            best_cv_f1_std = cv_df.iloc[best_cv_idx]['F1 Std']
                             
-                            st.success("🏆 **Best CV Model: " + best_cv_name + "** (F1: " + str(best_cv_f1) + " ±" + str(best_cv_f1_std) + ")")
-                            
-                            # Fold-by-fold for best model
-                            if best_cv_name in fold_details:
-                                st.divider()
-                                st.markdown("### 📈 Fold-by-Fold: " + best_cv_name)
-                                
-                                fd = fold_details[best_cv_name]
-                                fold_df = pd.DataFrame({
-                                    'Fold': [str(i+1) for i in range(cv_folds)],
-                                    'Accuracy': fd['Accuracy'].round(4),
-                                    'F1 Score': fd['F1'].round(4)
-                                })
-                                
-                                col1, col2 = st.columns([3, 2])
-                                with col1:
-                                    fig = go.Figure()
-                                    fig.add_trace(go.Scatter(x=fold_df['Fold'], y=fold_df['Accuracy'], mode='lines+markers', name='Accuracy', line=dict(color='#0984e3', width=2)))
-                                    fig.add_trace(go.Scatter(x=fold_df['Fold'], y=fold_df['F1 Score'], mode='lines+markers', name='F1', line=dict(color='#00b894', width=2)))
-                                    fig.update_layout(yaxis_range=[0.5, 1.0], height=300)
-                                    st.plotly_chart(fig, use_container_width=True)
-                                with col2:
-                                    st.dataframe(fold_df, use_container_width=True, hide_index=True)
-                            
-                            # CV charts
-                            st.divider()
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                fig = go.Figure()
-                                for _, row in cv_df.iterrows():
-                                    fig.add_trace(go.Bar(name=row['Model'], x=['Accuracy'], y=[row['Accuracy Mean']], error_y=dict(type='data', array=[row['Accuracy Std']])))
-                                fig.update_layout(barmode='group', height=300, title='Accuracy ± Std')
-                                st.plotly_chart(fig, use_container_width=True)
-                            with col2:
-                                fig = go.Figure()
-                                for _, row in cv_df.iterrows():
-                                    fig.add_trace(go.Bar(name=row['Model'], x=['F1 Score'], y=[row['F1 Mean']], error_y=dict(type='data', array=[row['F1 Std']])))
-                                fig.update_layout(barmode='group', height=300, title='F1 Score ± Std')
-                                st.plotly_chart(fig, use_container_width=True)
+                            st.success("🏆 **Best CV Model: " + best_cv_name + "** (F1: " + str(best_cv_f1) + ")")
                             
                             # Store
                             st.session_state.cv_results_df = cv_df
                             st.session_state.cv_fold_details = fold_details
                             st.session_state.cv_ran = True
                             
-                            st.success("CV complete! Go to **Summary** tab.")
+                            st.success("CV complete! Go to **Summary** or **Visualizations** tab.")
         
         # =============================================================
         # TAB 4: Summary
@@ -3151,7 +3105,7 @@ def main():
                 st.divider()
                 
                 # Final ranking
-                st.markdown("#### 🏆 Final Model Ranking (by CV F1 Score)")
+                st.markdown("#### 🏆 Final Model Ranking")
                 
                 cv_sorted = cv_df.sort_values('F1 Mean', ascending=False)
                 summary = "Model Ranking (Cross Validation):\n" + "=" * 40 + "\n\n"
@@ -3161,10 +3115,165 @@ def main():
                 st.code(summary, language='text')
                 
                 # Download
-                col1, col2 = st.columns(2)
+                col1, col2, col3 = st.columns(3)
                 with col1:
                     st.download_button("📥 CV Results CSV", cv_df.to_csv(index=False), "cv_results.csv", "text/csv")
                 with col2:
+                    st.download_button("📥 Test Results CSV", performance_df.to_csv(index=False), "test_results.csv", "text/csv") if performance_df is not None else None
+                with col3:
                     st.download_button("📥 Summary TXT", summary, "cv_summary.txt", "text/plain")
+        
+        # =============================================================
+        # TAB 5: Visualizations (NEW)
+        # =============================================================
+        with cv_tab5:
+            st.markdown("### 📈 Visualizations")
+            st.markdown("Comprehensive visual comparison of all models.")
+            
+            if not st.session_state.get('cv_ran', False):
+                st.warning("⚠️ Please complete K-Fold CV tab first.")
+            else:
+                cv_df = st.session_state.cv_results_df
+                performance_df = st.session_state.get('cv_performance_df', None)
+                fold_details = st.session_state.cv_fold_details
+                
+                # Test Set Performance Chart
+                if performance_df is not None:
+                    st.markdown("#### 📊 Test Set Performance Comparison")
+                    
+                    fig = px.bar(
+                        performance_df.melt(id_vars='Model', var_name='Metric', value_name='Score'),
+                        x='Model', y='Score', color='Metric',
+                        barmode='group', height=400,
+                        title='Test Set Performance',
+                        color_discrete_sequence=px.colors.qualitative.Set2
+                    )
+                    fig.update_layout(legend=dict(orientation='h', yanchor='bottom', y=1.02))
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                st.divider()
+                
+                # CV Comparison Charts
+                st.markdown("#### 🔄 Cross Validation Comparison")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    fig = go.Figure()
+                    for _, row in cv_df.iterrows():
+                        fig.add_trace(go.Bar(
+                            name=row['Model'],
+                            x=['Accuracy'],
+                            y=[row['Accuracy Mean']],
+                            error_y=dict(type='data', array=[row['Accuracy Std']]),
+                            text=str(row['Accuracy Mean']) + ' ± ' + str(row['Accuracy Std'])
+                        ))
+                    fig.update_layout(barmode='group', height=400, title='Accuracy with Error Bars')
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                with col2:
+                    fig = go.Figure()
+                    for _, row in cv_df.iterrows():
+                        fig.add_trace(go.Bar(
+                            name=row['Model'],
+                            x=['F1 Score'],
+                            y=[row['F1 Mean']],
+                            error_y=dict(type='data', array=[row['F1 Std']]),
+                            text=str(row['F1 Mean']) + ' ± ' + str(row['F1 Std'])
+                        ))
+                    fig.update_layout(barmode='group', height=400, title='F1 Score with Error Bars')
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                st.divider()
+                
+                # Radar Chart
+                st.markdown("#### 🎯 Radar Chart - All Metrics")
+                
+                if performance_df is not None:
+                    categories = ['Accuracy', 'Precision', 'Recall', 'F1-Score']
+                    
+                    fig = go.Figure()
+                    for _, row in performance_df.iterrows():
+                        fig.add_trace(go.Scatterpolar(
+                            r=[row['Accuracy'], row['Precision'], row['Recall'], row['F1-Score']],
+                            theta=categories,
+                            fill='toself',
+                            name=row['Model']
+                        ))
+                    fig.update_layout(
+                        polar=dict(radialaxis=dict(visible=True, range=[0.9, 1.0])),
+                        height=400, showlegend=True
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                st.divider()
+                
+                # Fold-by-Fold for Best Model
+                st.markdown("#### 📈 Fold-by-Fold Performance")
+                
+                best_cv_name = cv_df.iloc[cv_df['F1 Mean'].idxmax()]['Model']
+                
+                if best_cv_name in fold_details:
+                    fd = fold_details[best_cv_name]
+                    cv_folds = len(fd['Accuracy'])
+                    
+                    fold_df = pd.DataFrame({
+                        'Fold': [str(i+1) for i in range(cv_folds)],
+                        'Accuracy': fd['Accuracy'].round(4),
+                        'F1 Score': fd['F1'].round(4)
+                    })
+                    
+                    col1, col2 = st.columns([3, 2])
+                    with col1:
+                        fig = go.Figure()
+                        fig.add_trace(go.Scatter(
+                            x=fold_df['Fold'], y=fold_df['Accuracy'],
+                            mode='lines+markers', name='Accuracy',
+                            line=dict(color='#0984e3', width=3)
+                        ))
+                        fig.add_trace(go.Scatter(
+                            x=fold_df['Fold'], y=fold_df['F1 Score'],
+                            mode='lines+markers', name='F1 Score',
+                            line=dict(color='#00b894', width=3)
+                        ))
+                        fig.update_layout(
+                            title='Fold-by-Fold: ' + best_cv_name,
+                            yaxis_range=[0.5, 1.0], height=400
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                    with col2:
+                        st.dataframe(fold_df, use_container_width=True, hide_index=True)
+                
+                st.divider()
+                
+                # Confusion Matrices
+                st.markdown("#### 🔍 Confusion Matrices")
+                
+                X_test = st.session_state.cv_X_test
+                y_test = st.session_state.cv_y_test
+                
+                if hasattr(st.session_state, 'cv_lr_pred'):
+                    cm_tab1, cm_tab2, cm_tab3 = st.tabs(["LR", "RF", "GB"])
+                    
+                    with cm_tab1:
+                        cm = confusion_matrix(y_test, st.session_state.cv_lr_pred)
+                        fig = px.imshow(cm, text_auto=True, title='Logistic Regression',
+                                      labels=dict(x='Predicted', y='Actual'),
+                                      color_continuous_scale='Blues')
+                        st.plotly_chart(fig, use_container_width=True)
+                    
+                    with cm_tab2:
+                        cm = confusion_matrix(y_test, st.session_state.cv_rf_pred)
+                        fig = px.imshow(cm, text_auto=True, title='Random Forest',
+                                      labels=dict(x='Predicted', y='Actual'),
+                                      color_continuous_scale='Greens')
+                        st.plotly_chart(fig, use_container_width=True)
+                    
+                    with cm_tab3:
+                        cm = confusion_matrix(y_test, st.session_state.cv_gb_pred)
+                        fig = px.imshow(cm, text_auto=True, title='Gradient Boosting',
+                                      labels=dict(x='Predicted', y='Actual'),
+                                      color_continuous_scale='Purples')
+                        st.plotly_chart(fig, use_container_width=True)
 if __name__ == "__main__":
     main()
