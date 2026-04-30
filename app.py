@@ -967,12 +967,12 @@ def main():
                             color_col = 'Risk_Level' if 'Risk_Level' in clean.columns else None
                             fig = px.scatter(clean, x='MP_Count_per_L', y='Risk_Score',
                                            color=color_col, title='MP Count vs Risk Score', opacity=0.7)
-                            st.plotly_chart(fig, use_container_width=True)
+                            st.plotly_chart(fig, use_container_width=True, key="scatter_mp_risk")
                         
                         with st2:
                             fig = px.scatter(clean, x='MP_Count_per_L', y='Risk_Score',
-                                           color=color_col, title='MP Count vs Risk Score', opacity=0.7)
-                            st.plotly_chart(fig, use_container_width=True)
+                                           color=color_col, title='MP Count vs Risk Score (Copy)', opacity=0.7)
+                            st.plotly_chart(fig, use_container_width=True, key="scatter_mp_risk_trend")
                         
                         with st3:
                             pearson_corr = clean['MP_Count_per_L'].corr(clean['Risk_Score'])
