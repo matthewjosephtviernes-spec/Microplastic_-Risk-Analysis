@@ -2804,7 +2804,6 @@ def main():
                         st.error("No valid numerical features.")
                         st.stop()
                     
-                    # Split
                     unique, counts = np.unique(y, return_counts=True)
                     stratify_param = y if (len(unique) > 1 and all(c >= 2 for c in counts)) else None
                     
@@ -2812,7 +2811,6 @@ def main():
                         X, y, test_size=test_size, random_state=42, stratify=stratify_param
                     )
                     
-                    # Store in session
                     st.session_state.cv_X_train = X_train
                     st.session_state.cv_X_test = X_test
                     st.session_state.cv_y_train = y_train
@@ -2822,7 +2820,6 @@ def main():
                 
                 st.markdown("---")
                 
-                # Train models
                 st.markdown("### 🤖 Training Models")
                 
                 col1, col2, col3 = st.columns(3)
@@ -2862,11 +2859,7 @@ def main():
         # STEP 3: Evaluate the Models
         # =============================================================
         st.markdown("## 📊 Step 3: Evaluate the Models")
-        st.markdown("""
-        **Subtask:** Evaluate the performance of each trained model on the testing data using appropriate metrics.
-        
-        Calculate accuracy, precision, recall, and F1-score using 'weighted' averaging for multi-class.
-        """)
+        st.markdown("Evaluate each trained model on the testing data using accuracy, precision, recall, and F1-score.")
         
         if not hasattr(st.session_state, 'cv_lr_model'):
             st.warning("Please complete Step 2 first.")
@@ -2878,37 +2871,10 @@ def main():
             random_forest_model = st.session_state.cv_rf_model
             gradient_boosting_model = st.session_state.cv_gb_model
             
-            # Show evaluation code
-            st.markdown("### 📝 Evaluation Code")
-            st.code(
-                "from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score\n\n" +
-                "# Evaluate Logistic Regression Model\n" +
-                "lr_predictions = logistic_regression_model.predict(X_test)\n" +
-                "lr_accuracy = accuracy_score(y_test, lr_predictions)\n" +
-                "lr_precision = precision_score(y_test, lr_predictions, average='weighted')\n" +
-                "lr_recall = recall_score(y_test, lr_predictions, average='weighted')\n" +
-                "lr_f1 = f1_score(y_test, lr_predictions, average='weighted')\n\n" +
-                "# Evaluate RandomForestClassifier Model\n" +
-                "rf_predictions = random_forest_model.predict(X_test)\n" +
-                "rf_accuracy = accuracy_score(y_test, rf_predictions)\n" +
-                "rf_precision = precision_score(y_test, rf_predictions, average='weighted')\n" +
-                "rf_recall = recall_score(y_test, rf_predictions, average='weighted')\n" +
-                "rf_f1 = f1_score(y_test, rf_predictions, average='weighted')\n\n" +
-                "# Evaluate GradientBoostingClassifier Model\n" +
-                "gb_predictions = gradient_boosting_model.predict(X_test)\n" +
-                "gb_accuracy = accuracy_score(y_test, gb_predictions)\n" +
-                "gb_precision = precision_score(y_test, gb_predictions, average='weighted')\n" +
-                "gb_recall = recall_score(y_test, gb_predictions, average='weighted')\n" +
-                "gb_f1 = f1_score(y_test, gb_predictions, average='weighted')",
-                language='python'
-            )
-            
-            st.markdown("---")
-            
             if st.button("📊 Evaluate All Models", type="primary", use_container_width=True, key="cv_eval_btn"):
                 with st.spinner('Evaluating models...'):
                     
-                    # ── Logistic Regression Evaluation ──
+                    # Logistic Regression Evaluation
                     st.markdown("### --- Logistic Regression Model Evaluation ---")
                     
                     lr_predictions = logistic_regression_model.predict(X_test)
@@ -2937,7 +2903,7 @@ def main():
                     
                     st.markdown("---")
                     
-                    # ── Random Forest Evaluation ──
+                    # Random Forest Evaluation
                     st.markdown("### --- RandomForestClassifier Model Evaluation ---")
                     
                     rf_predictions = random_forest_model.predict(X_test)
@@ -2966,7 +2932,7 @@ def main():
                     
                     st.markdown("---")
                     
-                    # ── Gradient Boosting Evaluation ──
+                    # Gradient Boosting Evaluation
                     st.markdown("### --- GradientBoostingClassifier Model Evaluation ---")
                     
                     gb_predictions = gradient_boosting_model.predict(X_test)
@@ -2995,7 +2961,7 @@ def main():
                     
                     st.markdown("---")
                     
-                    # ── Comparison Table ──
+                    # Comparison Table
                     st.markdown("### 📊 Model Performance Comparison")
                     
                     performance_df = pd.DataFrame({
@@ -3008,95 +2974,79 @@ def main():
                     
                     st.dataframe(performance_df, use_container_width=True, hide_index=True)
                     
-                    # Best model
                     best_idx = performance_df['F1-Score'].idxmax()
                     best_name = performance_df.iloc[best_idx]['Model']
                     best_f1 = performance_df.iloc[best_idx]['F1-Score']
-                    best_acc = performance_df.iloc[best_idx]['Accuracy']
                     
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.success("🏆 **Best by F1-Score: " + best_name + "**")
-                        st.metric("F1-Score", str(best_f1))
-                    with col2:
-                        st.success("📊 **Accuracy: " + str(best_acc) + "**")
-                    
-                    st.divider()
-                    
-                    # ── Comparison Chart ──
-                    st.markdown("### 📊 Performance Comparison Chart")
-                    
-                    fig = px.bar(
-                        performance_df.melt(id_vars='Model', var_name='Metric', value_name='Score'),
-                        x='Model', y='Score', color='Metric',
-                        barmode='group', height=400,
-                        title='Model Performance Comparison',
-                        color_discrete_sequence=px.colors.qualitative.Set2
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                    # ── Confusion Matrix ──
-                    st.divider()
-                    st.markdown("### 🔍 Confusion Matrix - " + best_name)
-                    
-                    if best_name == 'Logistic Regression':
-                        best_pred = lr_predictions
-                    elif best_name == 'Random Forest':
-                        best_pred = rf_predictions
-                    else:
-                        best_pred = gb_predictions
-                    
-                    cm = confusion_matrix(y_test, best_pred)
-                    fig = px.imshow(
-                        cm, text_auto=True,
-                        title='Confusion Matrix: ' + best_name,
-                        labels=dict(x='Predicted', y='Actual'),
-                        color_continuous_scale='Blues'
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                    # ── Classification Report ──
-                    st.divider()
-                    st.markdown("### 📋 Classification Report - " + best_name)
-                    
-                    with st.expander("View Full Classification Report"):
-                        report_text = classification_report(y_test, best_pred)
-                        st.code(report_text, language='text')
+                    st.success("🏆 **Best Model: " + best_name + "** (F1-Score: " + str(best_f1) + ")")
                     
                     # Store
-                    st.session_state.cv_evaluation_ran = True
+                    st.session_state.cv_lr_pred = lr_predictions
+                    st.session_state.cv_rf_pred = rf_predictions
+                    st.session_state.cv_gb_pred = gb_predictions
                     st.session_state.cv_performance_df = performance_df
+                    st.session_state.cv_best_name = best_name
+                    st.session_state.cv_evaluation_ran = True
                     
-                    # Download
-                    st.divider()
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.download_button("📥 Performance CSV", performance_df.to_csv(index=False), "evaluation_results.csv", "text/csv")
-                    with col2:
-                        st.download_button("📥 Classification Report", report_text, "classification_report.txt", "text/plain")
-                    with col3:
-                        st.download_button("📥 Confusion Matrix CSV", pd.DataFrame(cm).to_csv(index=False), "confusion_matrix.csv", "text/csv")
+                    st.success("Evaluation complete! Proceed to Step 4.")
         
         st.divider()
         
         # =============================================================
-        # STEP 4: Cross Validation
+        # STEP 4: K-Fold Cross Validation
         # =============================================================
-        st.markdown("## 🔄 Step 4: Cross Validation")
-        st.markdown("Perform Stratified K-Fold Cross Validation for robust model evaluation.")
+        st.markdown("## 🔄 Step 4: K-Fold Cross Validation")
+        st.markdown("""
+        **Subtask:** Perform K-Fold Cross Validation to get more robust performance estimates.
         
-        if not hasattr(st.session_state, 'cv_lr_model'):
-            st.warning("Please complete Step 2 first.")
+        Instead of a single train/test split, K-Fold CV splits the data into K folds and
+        trains/evaluates K times, each time using a different fold for testing.
+        """)
+        
+        if not st.session_state.get('cv_evaluation_ran', False):
+            st.warning("Please complete Step 3 first.")
         else:
-            cv_folds = st.slider("Number of CV Folds:", 3, 10, 5, key="cv_folds_slider")
-            
             X_train = st.session_state.cv_X_train
             y_train = st.session_state.cv_y_train
             
-            if st.button("🔄 Run Cross Validation", type="primary", use_container_width=True, key="cv_run_btn"):
-                with st.spinner('Running cross validation...'):
+            # Show K-Fold CV code
+            st.markdown("### 📝 K-Fold Cross Validation Code")
+            st.code(
+                "from sklearn.model_selection import StratifiedKFold, cross_val_score\n\n" +
+                "# Define K-Fold\n" +
+                "cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)\n\n" +
+                "# Logistic Regression\n" +
+                "lr_model = LogisticRegression(random_state=42, max_iter=1000)\n" +
+                "lr_acc = cross_val_score(lr_model, X_train, y_train, cv=cv, scoring='accuracy')\n" +
+                "lr_f1 = cross_val_score(lr_model, X_train, y_train, cv=cv, scoring='f1_weighted')\n\n" +
+                "# Random Forest\n" +
+                "rf_model = RandomForestClassifier(n_estimators=100, random_state=42)\n" +
+                "rf_acc = cross_val_score(rf_model, X_train, y_train, cv=cv, scoring='accuracy')\n" +
+                "rf_f1 = cross_val_score(rf_model, X_train, y_train, cv=cv, scoring='f1_weighted')\n\n" +
+                "# Gradient Boosting\n" +
+                "gb_model = GradientBoostingClassifier(n_estimators=100, random_state=42)\n" +
+                "gb_acc = cross_val_score(gb_model, X_train, y_train, cv=cv, scoring='accuracy')\n" +
+                "gb_f1 = cross_val_score(gb_model, X_train, y_train, cv=cv, scoring='f1_weighted')",
+                language='python'
+            )
+            
+            st.markdown("---")
+            
+            # CV Configuration
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                cv_folds = st.slider("Number of Folds (K):", 3, 10, 5, key="cv_k_slider")
+            with col2:
+                st.metric("Training Samples", str(X_train.shape[0]))
+            with col3:
+                st.metric("Features", str(X_train.shape[1]))
+            
+            st.markdown("---")
+            
+            if st.button("🔄 Run K-Fold Cross Validation", type="primary", use_container_width=True, key="cv_run_btn"):
+                with st.spinner('Running ' + str(cv_folds) + '-Fold Cross Validation...'):
                     
-                    models = {
+                    models_cv = {
                         'Logistic Regression': LogisticRegression(random_state=42, max_iter=1000),
                         'Random Forest': RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1),
                         'Gradient Boosting': GradientBoostingClassifier(n_estimators=100, random_state=42)
@@ -3105,51 +3055,214 @@ def main():
                     cv = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=42)
                     
                     cv_results = []
+                    fold_details = {}
+                    
+                    st.markdown("### 🔄 Running Cross Validation...")
                     
                     col1, col2, col3 = st.columns(3)
                     
-                    for i, (name, model) in enumerate(models.items()):
+                    for i, (name, model) in enumerate(models_cv.items()):
                         with [col1, col2, col3][i]:
                             st.markdown("**" + name + "**")
                             progress = st.progress(0)
                             
                             try:
+                                # Accuracy
                                 acc_scores = cross_val_score(model, X_train, y_train, cv=cv, scoring='accuracy', n_jobs=-1)
-                                progress.progress(33)
+                                progress.progress(25)
+                                
+                                # F1 Score
                                 f1_scores = cross_val_score(model, X_train, y_train, cv=cv, scoring='f1_weighted', n_jobs=-1)
-                                progress.progress(66)
+                                progress.progress(50)
+                                
+                                # Precision
                                 prec_scores = cross_val_score(model, X_train, y_train, cv=cv, scoring='precision_weighted', n_jobs=-1)
+                                progress.progress(75)
+                                
+                                # Recall
+                                rec_scores = cross_val_score(model, X_train, y_train, cv=cv, scoring='recall_weighted', n_jobs=-1)
                                 progress.progress(100)
                                 
                                 cv_results.append({
                                     'Model': name,
                                     'Accuracy Mean': round(acc_scores.mean(), 4),
                                     'Accuracy Std': round(acc_scores.std(), 4),
+                                    'Precision Mean': round(prec_scores.mean(), 4),
+                                    'Precision Std': round(prec_scores.std(), 4),
+                                    'Recall Mean': round(rec_scores.mean(), 4),
+                                    'Recall Std': round(rec_scores.std(), 4),
                                     'F1 Mean': round(f1_scores.mean(), 4),
-                                    'F1 Std': round(f1_scores.std(), 4),
-                                    'Precision Mean': round(prec_scores.mean(), 4)
+                                    'F1 Std': round(f1_scores.std(), 4)
                                 })
                                 
+                                fold_details[name] = {
+                                    'Accuracy': acc_scores,
+                                    'F1': f1_scores,
+                                    'Precision': prec_scores,
+                                    'Recall': rec_scores
+                                }
+                                
                                 st.success("✅ Done")
+                                st.metric("Mean Acc", str(round(acc_scores.mean(), 4)))
                                 st.metric("Mean F1", str(round(f1_scores.mean(), 4)))
+                                
                             except Exception as e:
                                 progress.progress(100)
-                                st.error("Failed")
+                                st.error("Failed: " + str(e)[:60])
                     
                     if len(cv_results) > 0:
                         st.divider()
-                        st.markdown("### 📊 Cross Validation Results")
+                        
+                        # ── CV Results Table ──
+                        st.markdown("### 📊 K-Fold Cross Validation Results")
+                        st.markdown(str(cv_folds) + "-Fold Stratified Cross Validation")
                         
                         cv_df = pd.DataFrame(cv_results)
                         st.dataframe(cv_df, use_container_width=True, hide_index=True)
                         
+                        # Best model
                         best_cv_idx = cv_df['F1 Mean'].idxmax()
-                        st.success("🏆 Best CV Model: **" + cv_df.iloc[best_cv_idx]['Model'] + "** (F1: " + str(cv_df.iloc[best_cv_idx]['F1 Mean']) + ")")
+                        best_cv_name = cv_df.iloc[best_cv_idx]['Model']
+                        best_cv_f1 = cv_df.iloc[best_cv_idx]['F1 Mean']
+                        best_cv_f1_std = cv_df.iloc[best_cv_idx]['F1 Std']
+                        best_cv_acc = cv_df.iloc[best_cv_idx]['Accuracy Mean']
                         
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.success("🏆 **Best CV Model: " + best_cv_name + "**")
+                        with col2:
+                            st.metric("Mean F1 Score", str(best_cv_f1) + " (±" + str(best_cv_f1_std) + ")")
+                        with col3:
+                            st.metric("Mean Accuracy", str(best_cv_acc))
+                        
+                        st.divider()
+                        
+                        # ── Fold-by-Fold Details ──
+                        st.markdown("### 📈 Fold-by-Fold Performance")
+                        
+                        # Show details for best model
+                        if best_cv_name in fold_details:
+                            fold_data = fold_details[best_cv_name]
+                            
+                            fold_df = pd.DataFrame({
+                                'Fold': [str(i+1) for i in range(cv_folds)],
+                                'Accuracy': fold_data['Accuracy'].round(4),
+                                'Precision': fold_data['Precision'].round(4),
+                                'Recall': fold_data['Recall'].round(4),
+                                'F1 Score': fold_data['F1'].round(4)
+                            })
+                            
+                            col1, col2 = st.columns([3, 2])
+                            with col1:
+                                fig = go.Figure()
+                                fig.add_trace(go.Scatter(
+                                    x=fold_df['Fold'], y=fold_df['Accuracy'],
+                                    mode='lines+markers', name='Accuracy',
+                                    line=dict(color='#0984e3', width=2)
+                                ))
+                                fig.add_trace(go.Scatter(
+                                    x=fold_df['Fold'], y=fold_df['F1 Score'],
+                                    mode='lines+markers', name='F1 Score',
+                                    line=dict(color='#00b894', width=2)
+                                ))
+                                fig.update_layout(
+                                    title='Fold-by-Fold: ' + best_cv_name,
+                                    yaxis_range=[0.5, 1.0], height=350
+                                )
+                                st.plotly_chart(fig, use_container_width=True)
+                            with col2:
+                                st.dataframe(fold_df, use_container_width=True, hide_index=True)
+                        
+                        st.divider()
+                        
+                        # ── CV Comparison Chart ──
+                        st.markdown("### 📊 Cross Validation Comparison")
+                        
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            fig = go.Figure()
+                            for _, row in cv_df.iterrows():
+                                fig.add_trace(go.Bar(
+                                    name=row['Model'],
+                                    x=['Accuracy'],
+                                    y=[row['Accuracy Mean']],
+                                    error_y=dict(type='data', array=[row['Accuracy Std']]),
+                                    text=str(row['Accuracy Mean']) + ' ± ' + str(row['Accuracy Std'])
+                                ))
+                            fig.update_layout(barmode='group', height=350, title='Accuracy with Std Dev')
+                            st.plotly_chart(fig, use_container_width=True)
+                        
+                        with col2:
+                            fig = go.Figure()
+                            for _, row in cv_df.iterrows():
+                                fig.add_trace(go.Bar(
+                                    name=row['Model'],
+                                    x=['F1 Score'],
+                                    y=[row['F1 Mean']],
+                                    error_y=dict(type='data', array=[row['F1 Std']]),
+                                    text=str(row['F1 Mean']) + ' ± ' + str(row['F1 Std'])
+                                ))
+                            fig.update_layout(barmode='group', height=350, title='F1 Score with Std Dev')
+                            st.plotly_chart(fig, use_container_width=True)
+                        
+                        st.divider()
+                        
+                        # ── Stability Analysis ──
+                        st.markdown("### 📊 Model Stability Analysis")
+                        st.markdown("*Lower CV (Std/Mean) = More Stable Model*")
+                        
+                        col1, col2, col3 = st.columns(3)
+                        
+                        for i, (_, row) in enumerate(cv_df.iterrows()):
+                            with [col1, col2, col3][i]:
+                                cv_score = round(row['F1 Std'] / row['F1 Mean'], 4) if row['F1 Mean'] > 0 else 0
+                                
+                                if cv_score < 0.02:
+                                    stability = "🟢 Very Stable"
+                                elif cv_score < 0.05:
+                                    stability = "🟡 Stable"
+                                else:
+                                    stability = "🔴 Less Stable"
+                                
+                                st.markdown("**" + row['Model'] + "**")
+                                st.metric("CV (Std/Mean)", str(cv_score))
+                                st.metric("Stability", stability)
+                        
+                        st.divider()
+                        
+                        # ── Summary ──
+                        st.markdown("### 📋 Cross Validation Summary")
+                        
+                        summary = (
+                            "K-Fold Cross Validation Summary (" + str(cv_folds) + " Folds)\n" +
+                            "=" * 50 + "\n\n" +
+                            "Best Model: " + best_cv_name + "\n" +
+                            "  Mean Accuracy: " + str(best_cv_acc) + " (±" + str(cv_df.iloc[best_cv_idx]['Accuracy Std']) + ")\n" +
+                            "  Mean F1 Score: " + str(best_cv_f1) + " (±" + str(best_cv_f1_std) + ")\n\n" +
+                            "Model Ranking (by F1 Score):\n" +
+                            "-" * 30 + "\n"
+                        )
+                        
+                        cv_sorted = cv_df.sort_values('F1 Mean', ascending=False)
+                        for rank, (_, row) in enumerate(cv_sorted.iterrows(), 1):
+                            summary += str(rank) + ". " + row['Model'] + ": F1=" + str(row['F1 Mean']) + " (±" + str(row['F1 Std']) + "), Acc=" + str(row['Accuracy Mean']) + "\n"
+                        
+                        st.code(summary, language='text')
+                        
+                        # Store
                         st.session_state.cv_results_df = cv_df
+                        st.session_state.cv_fold_details = fold_details
                         st.session_state.cv_ran = True
                         
-                        st.download_button("📥 Download CV Results", cv_df.to_csv(index=False), "cv_results.csv", "text/csv")
-
+                        # Download
+                        st.divider()
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.download_button("📥 CV Results CSV", cv_df.to_csv(index=False), "cv_results.csv", "text/csv")
+                        with col2:
+                            st.download_button("📥 Fold Details CSV", fold_df.to_csv(index=False), "fold_details.csv", "text/csv")
+                        with col3:
+                            st.download_button("📥 Summary TXT", summary, "cv_summary.txt", "text/plain")
 if __name__ == "__main__":
     main()
