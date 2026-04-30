@@ -3337,10 +3337,13 @@ def main():
                     for model_name, series in feature_relevance_series.items():
                         st.markdown("**" + model_name + ":**")
                         
+                        # Get actual number of features available
+                        actual_n = min(n_top, len(series))
+                        
                         top_df = pd.DataFrame({
-                            'Rank': range(1, n_top + 1),
-                            'Feature': series.head(n_top).index,
-                            'Importance': series.head(n_top).values.round(6)
+                            'Rank': range(1, actual_n + 1),
+                            'Feature': series.head(actual_n).index.tolist(),
+                            'Importance': series.head(actual_n).values.round(6).tolist()
                         })
                         st.dataframe(top_df, use_container_width=True, hide_index=True)
                         
