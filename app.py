@@ -1674,7 +1674,6 @@ def main():
                     st.session_state.processed_data = df_capped
         
         # ==================== PREPROCESSING TAB 4: Skewness & Transform ====================
-        # ==================== PREPROCESSING TAB 4: Skewness & Transform ====================
         with p4:
             st.markdown("### 📊 Skewness Analysis & Log Transform")
             st.markdown("""
@@ -1688,17 +1687,23 @@ def main():
             numerical_cols = ['MP_Count_per_L', 'Risk_Score', 
                              'Microplastic_Size_mm_midpoint', 'Density_midpoint']
             
-            # Check which columns exist
-            available_cols = [col for col in numerical_cols if col in df.columns]
+            # Check which columns exist AND are actually numeric (not strings)
+            available_cols = [col for col in numerical_cols if col in df.columns and df[col].dtype in ['float64', 'int64']]
             missing_cols = [col for col in numerical_cols if col not in df.columns]
             
             if missing_cols:
                 st.warning(f"⚠️ Some columns not found: {', '.join(missing_cols)}")
             
+            # Show columns that were skipped because they're not numeric
+            non_numeric = [col for col in numerical_cols if col in df.columns and df[col].dtype not in ['float64', 'int64']]
+            if non_numeric:
+                st.info(f"ℹ️ Skipped non-numeric columns: {', '.join(non_numeric)}")
+            
             if len(available_cols) == 0:
-                st.error("❌ None of the specified numerical columns found!")
+                st.error("❌ None of the specified numerical columns found as numeric!")
+                st.write("Available numeric columns:", df.select_dtypes(include=['float64', 'int64']).columns.tolist())
             else:
-                st.markdown(f"**📊 Numerical columns:** {', '.join(available_cols)}")
+                st.markdown(f"**📊 Numerical columns to analyze:** {', '.join(available_cols)}")
                 
                 # Calculate and display skewness before transformation
                 st.markdown("---")
