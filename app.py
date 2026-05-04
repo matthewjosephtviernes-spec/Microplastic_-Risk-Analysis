@@ -1499,90 +1499,127 @@ def main():
         
         if st.button("🚀 Calculate Feature Importance", type="primary", use_container_width=True, key="fs_calc_btn"):
             with st.spinner('Calculating feature importance with 4 methods...'):
-                X = df[nums].copy()
-                y = df[target].copy()
-                mask = y.notna()
-                X = X[mask]
-                y = y[mask]
-                X = X.fillna(X.median())
-                if y.dtype == 'object': 
-                    y = LabelEncoder().fit_transform(y)
-                else:
-                    y = pd.qcut(y, q=4, labels=False, duplicates='drop')
-                X = X.dropna(axis=1, how='any')
-                
-                # Method 1: Mutual Information
-                mi_scores = mutual_info_classif(X, y, random_state=42)
-                mi_series = pd.Series(mi_scores, index=X.columns).sort_values(ascending=False)
-                
-                # Method 2: Chi-Squared
-                X_chi2 = X - X.min() + 1
-                chi2_scores, _ = chi2(X_chi2, y)
-                chi2_series = pd.Series(chi2_scores, index=X.columns).sort_values(ascending=False)
-                
-                # Method 3: Random Forest
-                rf = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
-                rf.fit(X, y)
-                rf_series = pd.Series(rf.feature_importances_, index=X.columns).sort_values(ascending=False)
-                
-                # Method 4: Gradient Boosting
-                gb = GradientBoostingClassifier(n_estimators=100, random_state=42)
-                gb.fit(X, y)
-                gb_series = pd.Series(gb.feature_importances_, index=X.columns).sort_values(ascending=False)
-                
-                # Store for modeling
-                st.session_state.selected_features = rf_series.head(10).index.tolist()
-                st.session_state.feature_importance = rf_series
-                st.session_state.mutual_info = mi_series
-                st.session_state.chi2_scores = chi2_series
-                st.session_state.gb_importance = gb_series
-                
-                # Display results in tabs
-                ft1, ft2, ft3, ft4 = st.tabs([
-                    "📊 Mutual Information", 
-                    "🔢 Chi-squared", 
-                    "🌲 Random Forest", 
-                    "🚀 Gradient Boosting"
-                ])
-                
-                with ft1:
-                    st.markdown("**Top 20 features based on Mutual Information:**")
-                    mi_df = mi_series.head(20).reset_index()
-                    mi_df.columns = ['Feature', 'Score']
-                    st.dataframe(mi_df, use_container_width=True, hide_index=True)
-                    fig = px.bar(mi_df.head(15), x='Feature', y='Score',
-                               title='Top 15 - Mutual Information')
-                    st.plotly_chart(fig, use_container_width=True, key="fs_mi_chart")
-                
-                with ft2:
-                    st.markdown("**Top 20 features based on Chi-squared Test:**")
-                    chi2_df = chi2_series.head(20).reset_index()
-                    chi2_df.columns = ['Feature', 'Score']
-                    st.dataframe(chi2_df, use_container_width=True, hide_index=True)
-                    fig = px.bar(chi2_df.head(15), x='Feature', y='Score',
-                               title='Top 15 - Chi-Squared')
-                    st.plotly_chart(fig, use_container_width=True, key="fs_chi2_chart")
-                
-                with ft3:
-                    st.markdown("**Top 20 features based on Random Forest:**")
-                    rf_df = rf_series.head(20).reset_index()
-                    rf_df.columns = ['Feature', 'Importance']
-                    st.dataframe(rf_df, use_container_width=True, hide_index=True)
-                    fig = px.bar(rf_df.head(15), x='Feature', y='Importance',
-                               title='Top 15 - Random Forest')
-                    st.plotly_chart(fig, use_container_width=True, key="fs_rf_chart")
-                
-                with ft4:
-                    st.markdown("**Top 20 features based on Gradient Boosting:**")
-                    gb_df = gb_series.head(20).reset_index()
-                    gb_df.columns = ['Feature', 'Importance']
-                    st.dataframe(gb_df, use_container_width=True, hide_index=True)
-                    fig = px.bar(gb_df.head(15), x='Feature', y='Importance',
-                               title='Top 15 - Gradient Boosting')
-                    st.plotly_chart(fig, use_container_width=True, key="fs_gb_chart")
-                
-                st.success(f"✅ Feature selection completed! Top 10 features stored for modeling.")
-                st.info(f"**Selected Features:** {', '.join(st.session_state.selected_features[:10])}")
+                try:
+                    X = df[nums].copy()
+                    y = df[target].copy()
+                    
+                    # Convert to numpy/pandas native types to avoid Arrow issues
+                    X = X.apply(pd.to_numeric, errors='coerce')
+                    y = pd.to_numeric(y, errors='coerce') if y.dtype == 'object' else y.copy()
+                    
+                    mask = y.notna()
+                    X = X[mask]
+                    y = y[mask]
+                    X = X.fillna(X.median())
+                    
+                    # Handle target variable
+                    if df[target].dtype == 'object':
+                        # For categorical targets, use LabelEncoder
+                        y = LabelEncoder().fit_transform(y.astype(str))
+                    elif y.nunique() < 10:
+                        # For numerical with few unique values, treat as classification
+                        y = y.astype(int)
+                    else:
+                        # For continuous numerical, bin into quartiles
+                        try:
+                            # Convert to numpy first to avoid Arrow issues
+                            y_np = y.to_numpy() if hasattr(y, 'to_numpy') else y.values
+                            y = pd.qcut(y_np, q=4, labels=False, duplicates='drop')
+                        except:
+                            # If qcut fails, use percentile-based binning
+                            y_np = y.to_numpy() if hasattr(y, 'to_numpy') else y.values
+                            percentiles = np.percentile(y_np[~np.isnan(y_np)], [25, 50, 75])
+                            y = np.digitize(y_np, percentiles)
+                    
+                    # Remove any remaining NaN
+                    valid_mask = ~np.isnan(y) if hasattr(y, 'isna') else ~pd.isna(y)
+                    X = X[valid_mask]
+                    y = y[valid_mask]
+                    
+                    X = X.dropna(axis=1, how='any')
+                    
+                    if X.shape[1] == 0:
+                        st.error("No valid features after cleaning. Please check your data.")
+                        st.stop()
+                    
+                    st.success(f"✅ Data prepared: {X.shape[0]} samples, {X.shape[1]} features")
+                    
+                    # Method 1: Mutual Information
+                    mi_scores = mutual_info_classif(X, y, random_state=42)
+                    mi_series = pd.Series(mi_scores, index=X.columns).sort_values(ascending=False)
+                    
+                    # Method 2: Chi-Squared
+                    X_chi2 = X - X.min() + 1
+                    chi2_scores, _ = chi2(X_chi2, y)
+                    chi2_series = pd.Series(chi2_scores, index=X.columns).sort_values(ascending=False)
+                    
+                    # Method 3: Random Forest
+                    rf = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
+                    rf.fit(X, y)
+                    rf_series = pd.Series(rf.feature_importances_, index=X.columns).sort_values(ascending=False)
+                    
+                    # Method 4: Gradient Boosting
+                    gb = GradientBoostingClassifier(n_estimators=100, random_state=42)
+                    gb.fit(X, y)
+                    gb_series = pd.Series(gb.feature_importances_, index=X.columns).sort_values(ascending=False)
+                    
+                    # Store for modeling
+                    st.session_state.selected_features = rf_series.head(10).index.tolist()
+                    st.session_state.feature_importance = rf_series
+                    st.session_state.mutual_info = mi_series
+                    st.session_state.chi2_scores = chi2_series
+                    st.session_state.gb_importance = gb_series
+                    
+                    # Display results in tabs
+                    ft1, ft2, ft3, ft4 = st.tabs([
+                        "📊 Mutual Information", 
+                        "🔢 Chi-squared", 
+                        "🌲 Random Forest", 
+                        "🚀 Gradient Boosting"
+                    ])
+                    
+                    with ft1:
+                        st.markdown("**Top 20 features based on Mutual Information:**")
+                        mi_df = mi_series.head(20).reset_index()
+                        mi_df.columns = ['Feature', 'Score']
+                        st.dataframe(mi_df, use_container_width=True, hide_index=True)
+                        fig = px.bar(mi_df.head(15), x='Feature', y='Score',
+                                   title='Top 15 - Mutual Information')
+                        st.plotly_chart(fig, use_container_width=True, key="fs_mi_chart")
+                    
+                    with ft2:
+                        st.markdown("**Top 20 features based on Chi-squared Test:**")
+                        chi2_df = chi2_series.head(20).reset_index()
+                        chi2_df.columns = ['Feature', 'Score']
+                        st.dataframe(chi2_df, use_container_width=True, hide_index=True)
+                        fig = px.bar(chi2_df.head(15), x='Feature', y='Score',
+                                   title='Top 15 - Chi-Squared')
+                        st.plotly_chart(fig, use_container_width=True, key="fs_chi2_chart")
+                    
+                    with ft3:
+                        st.markdown("**Top 20 features based on Random Forest:**")
+                        rf_df = rf_series.head(20).reset_index()
+                        rf_df.columns = ['Feature', 'Importance']
+                        st.dataframe(rf_df, use_container_width=True, hide_index=True)
+                        fig = px.bar(rf_df.head(15), x='Feature', y='Importance',
+                                   title='Top 15 - Random Forest')
+                        st.plotly_chart(fig, use_container_width=True, key="fs_rf_chart")
+                    
+                    with ft4:
+                        st.markdown("**Top 20 features based on Gradient Boosting:**")
+                        gb_df = gb_series.head(20).reset_index()
+                        gb_df.columns = ['Feature', 'Importance']
+                        st.dataframe(gb_df, use_container_width=True, hide_index=True)
+                        fig = px.bar(gb_df.head(15), x='Feature', y='Importance',
+                                   title='Top 15 - Gradient Boosting')
+                        st.plotly_chart(fig, use_container_width=True, key="fs_gb_chart")
+                    
+                    st.success(f"✅ Feature selection completed! Top 10 features stored for modeling.")
+                    st.info(f"**Selected Features:** {', '.join(st.session_state.selected_features[:10])}")
+                    
+                except Exception as e:
+                    st.error(f"❌ Feature selection error: {str(e)}")
+                    st.info("Try selecting a different target variable or check your data for issues.")
     # ==================== MODELING PAGE ====================
     # ==================== MODELING PAGE ====================
     elif section == "🤖 Modeling":
