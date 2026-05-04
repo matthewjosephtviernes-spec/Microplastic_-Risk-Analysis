@@ -1508,12 +1508,18 @@ from sklearn.preprocessing import LabelEncoder
         # Select features
         st.markdown("### 🔧 Configuration")
         
+        # Only use NUMERICAL columns for feature selection
+        nums = df.select_dtypes(include=['float64', 'int64', 'int32']).columns.tolist()
+        if target in nums: 
+            nums.remove(target)
+        
+        if len(nums) == 0:
+            st.error("❌ No numerical features found! Feature selection requires numerical data.")
+            st.info("Please preprocess your data first (encode categorical variables).")
+            st.stop()
+        
         col1, col2, col3 = st.columns(3)
         with col1:
-            # Only use NUMERICAL columns for feature selection
-            nums = df.select_dtypes(include=['float64', 'int64', 'int32']).columns.tolist()
-            if target in nums: 
-                nums.remove(target)
             feat_target = st.selectbox(
                 "Target for Feature Selection:", 
                 df.columns.tolist(),
@@ -1521,14 +1527,24 @@ from sklearn.preprocessing import LabelEncoder
                 key="fs_feat_target"
             )
         with col2:
-            n_top = st.slider("Top N features to display:", 5, min(50, len(nums)), min(20, len(nums)), key="fs_n_top")
+            # Fix: Ensure min, max, and default values are valid
+            max_val = len(nums)
+            min_val = min(5, max_val)
+            default_val = min(20, max_val)
+            
+            if max_val < 5:
+                st.warning(f"Only {max_val} numerical features available.")
+                n_top = max_val
+            else:
+                n_top = st.slider(
+                    "Top N features to display:", 
+                    min_value=min_val, 
+                    max_value=max_val, 
+                    value=default_val, 
+                    key="fs_n_top"
+                )
         with col3:
             st.metric("Available Numeric Features", len(nums))
-        
-        if len(nums) == 0:
-            st.error("❌ No numerical features found! Feature selection requires numerical data.")
-            st.info("Please preprocess your data first (encode categorical variables).")
-            st.stop()
         
         st.divider()
         
@@ -1596,10 +1612,13 @@ from sklearn.preprocessing import LabelEncoder
                     st.success(f"✅ Features: {X.shape[0]} samples × {X.shape[1]} features | Target: {len(y_encoded)} samples")
                     
                     if X.shape[1] == 0:
-                        st.error("❌ No valid features after cleaning!")
-                        st.stop()
+                        ст.error("❌ No valid features after cleaning!")
+                        ст.stop()
                     
                     st.dataframe(X.head(), use_container_width=True)
+                    
+                    # Update n_top if needed
+                    actual_n_top = min(n_top, X.shape[1])
                     
                     st.divider()
                     
@@ -1613,7 +1632,7 @@ from sklearn.preprocessing import LabelEncoder
                     mi_series = pd.Series(mi_scores, index=X.columns).sort_values(ascending=False)
                     
                     # Display top N
-                    mi_top = mi_series.head(n_top)
+                    mi_top = mi_series.head(actual_n_top)
                     mi_df = pd.DataFrame({
                         'Rank': range(1, len(mi_top) + 1),
                         'Feature': mi_top.index,
@@ -1622,7 +1641,7 @@ from sklearn.preprocessing import LabelEncoder
                     
                     col1, col2 = st.columns([3, 2])
                     with col1:
-                        st.markdown(f"**Top {n_top} Features by Mutual Information:**")
+                        st.markdown(f"**Top {actual_n_top} Features by Mutual Information:**")
                         st.dataframe(mi_df, use_container_width=True, hide_index=True)
                     with col2:
                         fig = px.bar(mi_df.head(15), x='Feature', y='Mutual Information Score',
@@ -1646,7 +1665,7 @@ from sklearn.preprocessing import LabelEncoder
                     chi2_series = pd.Series(chi2_scores, index=X.columns).sort_values(ascending=False)
                     pval_series = pd.Series(p_values, index=X.columns)
                     
-                    chi2_top = chi2_series.head(n_top)
+                    chi2_top = chi2_series.head(actual_n_top)
                     chi2_df = pd.DataFrame({
                         'Rank': range(1, len(chi2_top) + 1),
                         'Feature': chi2_top.index,
@@ -1656,7 +1675,7 @@ from sklearn.preprocessing import LabelEncoder
                     
                     col1, col2 = st.columns([3, 2])
                     with col1:
-                        st.markdown(f"**Top {n_top} Features by Chi-Squared:**")
+                        st.markdown(f"**Top {actual_n_top} Features by Chi-Squared:**")
                         st.dataframe(chi2_df, use_container_width=True, hide_index=True)
                     with col2:
                         fig = px.bar(chi2_df.head(15), x='Feature', y='Chi-Squared Score',
@@ -1687,7 +1706,7 @@ from sklearn.preprocessing import LabelEncoder
                     
                     rf_series = pd.Series(rf.feature_importances_, index=X.columns).sort_values(ascending=False)
                     
-                    rf_top = rf_series.head(n_top)
+                    rf_top = rf_series.head(actual_n_top)
                     rf_df = pd.DataFrame({
                         'Rank': range(1, len(rf_top) + 1),
                         'Feature': rf_top.index,
@@ -1697,7 +1716,7 @@ from sklearn.preprocessing import LabelEncoder
                     
                     col1, col2 = st.columns([3, 2])
                     with col1:
-                        st.markdown(f"**Top {n_top} Features by Random Forest:**")
+                        st.markdown(f"**Top {actual_n_top} Features by Random Forest:**")
                         st.dataframe(rf_df, use_container_width=True, hide_index=True)
                     with col2:
                         fig = px.bar(rf_df.head(15), x='Feature', y='Importance',
@@ -1717,11 +1736,11 @@ from sklearn.preprocessing import LabelEncoder
                     st.markdown("### 📋 Combined Feature Selection Summary")
                     st.markdown("*Top features comparison across all 3 methods*")
                     
-                    top_features_rf = rf_series.head(n_top).index.tolist()
-                    top_features_mi = mi_series.head(n_top).index.tolist()
-                    top_features_chi2 = chi2_series.head(n_top).index.tolist()
+                    top_features_rf = rf_series.head(actual_n_top).index.tolist()
+                    top_features_mi = mi_series.head(actual_n_top).index.tolist()
+                    top_features_chi2 = chi2_series.head(actual_n_top).index.tolist()
                     
-                    all_top = list(dict.fromkeys(top_features_rf + top_features_mi + top_features_chi2))[:n_top]
+                    all_top = list(dict.fromkeys(top_features_rf + top_features_mi + top_features_chi2))[:actual_n_top]
                     
                     combined_df = pd.DataFrame({
                         'Feature': all_top,
@@ -1736,9 +1755,9 @@ from sklearn.preprocessing import LabelEncoder
                     st.dataframe(combined_df, use_container_width=True, hide_index=True)
                     
                     # Method agreement
-                    rf_set = set(rf_series.head(n_top).index)
-                    mi_set = set(mi_series.head(n_top).index)
-                    chi2_set = set(chi2_series.head(n_top).index)
+                    rf_set = set(rf_series.head(actual_n_top).index)
+                    mi_set = set(mi_series.head(actual_n_top).index)
+                    chi2_set = set(chi2_series.head(actual_n_top).index)
                     common_all = rf_set & mi_set & chi2_set
                     
                     col1, col2, col3 = st.columns(3)
