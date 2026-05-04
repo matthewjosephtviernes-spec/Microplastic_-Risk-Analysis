@@ -1495,7 +1495,7 @@ def main():
         
         st.markdown("")
         
-        # Import necessary libraries (already imported at top)
+        # Import necessary libraries
         st.markdown("### 📚 Libraries Used")
         st.code("""
 from sklearn.feature_selection import mutual_info_classif, chi2
@@ -1537,40 +1537,46 @@ from sklearn.preprocessing import LabelEncoder
                     X = df[nums].copy()
                     y = df[feat_target].copy()
                     
-                    # Handle missing values
+                    # Handle missing values in target
                     mask = y.notna()
-                    X = X[mask]
-                    y = y[mask]
+                    X = X.loc[mask]
+                    y = y.loc[mask]
                     
-                    # Convert to numeric
+                    # Convert X to numeric (handle any object types)
                     X = X.apply(pd.to_numeric, errors='coerce')
                     X = X.fillna(X.median())
                     
-                    # Handle target variable
+                    # Handle target variable - convert to numpy array to avoid type issues
                     if y.dtype == 'object':
                         st.info(f"Target '{feat_target}' is categorical with {y.nunique()} classes")
                         le = LabelEncoder()
-                        y = le.fit_transform(y.astype(str))
+                        y_encoded = le.fit_transform(y.astype(str))
                         st.code(f"Classes: {list(le.classes_)}")
                     elif y.nunique() < 10:
                         st.info(f"Target '{feat_target}' has {y.nunique()} unique values - treating as classification")
-                        y = pd.to_numeric(y, errors='coerce').astype(int)
+                        y_encoded = pd.to_numeric(y, errors='coerce').fillna(0).astype(int).values
                     else:
                         st.info(f"Target '{feat_target}' is continuous - binning into 4 categories")
-                        y_np = y.to_numpy() if hasattr(y, 'to_numpy') else y.values
+                        # Convert to plain numpy array first
+                        y_np = pd.to_numeric(y, errors='coerce').fillna(y.median()).values
                         try:
-                            y = pd.qcut(y_np, q=4, labels=False, duplicates='drop')
+                            y_encoded = pd.qcut(y_np, q=4, labels=False, duplicates='drop')
                         except:
                             percentiles = np.percentile(y_np[~np.isnan(y_np)], [25, 50, 75])
-                            y = np.digitize(y_np, percentiles)
+                            y_encoded = np.digitize(y_np, percentiles)
                     
-                    # Remove NaN from target
-                    valid_mask = ~np.isnan(y) if hasattr(y, 'isna') else ~pd.isna(y)
-                    X = X[valid_mask]
-                    y = y[valid_mask]
+                    # Ensure y is a plain numpy array of integers
+                    y_encoded = np.asarray(y_encoded, dtype=int).flatten()
+                    
+                    # Remove any remaining NaN from X
                     X = X.dropna(axis=1, how='any')
                     
-                    st.success(f"✅ Features: {X.shape[0]} samples × {X.shape[1]} features | Target: {len(y)} samples")
+                    # Ensure matching lengths
+                    min_len = min(len(X), len(y_encoded))
+                    X = X.iloc[:min_len]
+                    y_encoded = y_encoded[:min_len]
+                    
+                    st.success(f"✅ Features: {X.shape[0]} samples × {X.shape[1]} features | Target: {len(y_encoded)} samples")
                     st.dataframe(X.head(), use_container_width=True)
                     
                     st.divider()
@@ -1581,7 +1587,7 @@ from sklearn.preprocessing import LabelEncoder
                     st.markdown("### 2️⃣ Mutual Information Scores")
                     st.markdown("*Measures the dependency between each feature and the target variable*")
                     
-                    mi_scores = mutual_info_classif(X, y, random_state=42)
+                    mi_scores = mutual_info_classif(X, y_encoded, random_state=42)
                     mi_series = pd.Series(mi_scores, index=X.columns).sort_values(ascending=False)
                     
                     # Display top N
@@ -1603,7 +1609,6 @@ from sklearn.preprocessing import LabelEncoder
                         fig.update_layout(height=400, xaxis_tickangle=-45)
                         st.plotly_chart(fig, use_container_width=True, key="fs_mi_chart")
                     
-                    # Store
                     st.session_state.mutual_info = mi_series
                     
                     st.divider()
@@ -1614,13 +1619,11 @@ from sklearn.preprocessing import LabelEncoder
                     st.markdown("### 3️⃣ Chi-Squared Test Scores")
                     st.markdown("*Tests statistical independence between each feature and the target*")
                     
-                    # Scale features to positive values for chi2
                     X_chi2 = X - X.min() + 1
-                    chi2_scores, p_values = chi2(X_chi2, y)
+                    chi2_scores, p_values = chi2(X_chi2, y_encoded)
                     chi2_series = pd.Series(chi2_scores, index=X.columns).sort_values(ascending=False)
                     pval_series = pd.Series(p_values, index=X.columns)
                     
-                    # Display top N
                     chi2_top = chi2_series.head(n_top)
                     chi2_df = pd.DataFrame({
                         'Rank': range(1, len(chi2_top) + 1),
@@ -1640,7 +1643,6 @@ from sklearn.preprocessing import LabelEncoder
                         fig.update_layout(height=400, xaxis_tickangle=-45)
                         st.plotly_chart(fig, use_container_width=True, key="fs_chi2_chart")
                     
-                    # Store
                     st.session_state.chi2_scores = chi2_series
                     
                     st.divider()
@@ -1658,13 +1660,11 @@ from sklearn.preprocessing import LabelEncoder
                             n_jobs=-1,
                             class_weight='balanced'
                         )
-                        rf.fit(X, y)
-                        
-                        st.success(f"✅ Random Forest trained! OOB Score: {rf.score(X, y):.4f}")
+                        rf.fit(X, y_encoded)
+                        st.success(f"✅ Random Forest trained! Training Score: {rf.score(X, y_encoded):.4f}")
                     
                     rf_series = pd.Series(rf.feature_importances_, index=X.columns).sort_values(ascending=False)
                     
-                    # Display top N
                     rf_top = rf_series.head(n_top)
                     rf_df = pd.DataFrame({
                         'Rank': range(1, len(rf_top) + 1),
@@ -1684,7 +1684,6 @@ from sklearn.preprocessing import LabelEncoder
                         fig.update_layout(height=400, xaxis_tickangle=-45)
                         st.plotly_chart(fig, use_container_width=True, key="fs_rf_chart")
                     
-                    # Store
                     st.session_state.feature_importance = rf_series
                     st.session_state.selected_features = rf_series.head(10).index.tolist()
                     
@@ -1696,12 +1695,10 @@ from sklearn.preprocessing import LabelEncoder
                     st.markdown("### 📋 Combined Feature Selection Summary")
                     st.markdown("*Top features comparison across all 3 methods*")
                     
-                    # Get top features from all methods
                     top_features_rf = rf_series.head(n_top).index.tolist()
                     top_features_mi = mi_series.head(n_top).index.tolist()
                     top_features_chi2 = chi2_series.head(n_top).index.tolist()
                     
-                    # Combine unique top features
                     all_top = list(dict.fromkeys(top_features_rf + top_features_mi + top_features_chi2))[:n_top]
                     
                     combined_df = pd.DataFrame({
@@ -1711,7 +1708,6 @@ from sklearn.preprocessing import LabelEncoder
                         'Chi2 Score': [round(chi2_series.get(f, 0), 4) for f in all_top]
                     })
                     
-                    # Add average rank
                     combined_df['Avg Score'] = combined_df[['RF Importance', 'MI Score', 'Chi2 Score']].mean(axis=1)
                     combined_df = combined_df.sort_values('Avg Score', ascending=False)
                     
@@ -1734,7 +1730,6 @@ from sklearn.preprocessing import LabelEncoder
                     if len(common_all) > 0:
                         st.success(f"**Features selected by ALL methods:** {', '.join(list(common_all)[:5])}")
                     
-                    # Store top 10 for modeling
                     st.session_state.selected_features = rf_series.head(10).index.tolist()
                     
                     st.success(f"✅ Feature selection complete!")
