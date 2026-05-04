@@ -1783,7 +1783,7 @@ feature_importances = pd.Series(model.feature_importances_,
                 except Exception as e:
                     st.error(f"❌ Feature selection error: {str(e)}")
                     st.info("Please check that your data has the required categorical columns and Risk_Level target variable.")
-       # ==================== MODELING PAGE ====================
+    # ==================== MODELING PAGE ====================
     elif section == "🤖 Modeling":
         st.markdown('<p class="section-header">🤖 Model Training</p>', unsafe_allow_html=True)
         
@@ -1808,31 +1808,38 @@ feature_importances = pd.Series(model.feature_importances_,
                 key="model_target"
             )
         with col2:
-            all_features = [c for c in df.columns if c != target]
-            
-            # Use selected features from Feature Selection if available
-            default_features = st.session_state.get('selected_features', None)
-            if default_features is not None:
-                default_features = [f for f in default_features if f in all_features]
-            else:
-                default_features = df.select_dtypes(include=['float64', 'int64']).columns.tolist()[:10]
-                default_features = [f for f in default_features if f in all_features and f != target]
-            
-            features = st.multiselect(
-                "Select Features for Training:", 
-                all_features, 
-                default=default_features,
-                key="model_features"
-            )
-        with col3:
             test_size = st.slider("Test Size:", 0.1, 0.5, 0.2, 0.05, key="model_test_size")
+        with col3:
+            # Use features from Feature Selection if available
+            if st.session_state.get('selected_features') is not None:
+                num_features = len(st.session_state.selected_features)
+                st.metric("Features Available", num_features)
+                st.caption("From Feature Selection")
+            else:
+                num_features = len(df.select_dtypes(include=['float64', 'int64']).columns)
+                st.metric("Numeric Features", num_features)
+                st.caption("Run Feature Selection first")
         
         st.divider()
         
-        # Show selected features
-        if features:
-            st.markdown(f"**Selected Features ({len(features)}):** {', '.join(features[:10])}{'...' if len(features) > 10 else ''}")
+        # Show features that will be used
+        if st.session_state.get('selected_features') is not None:
+            features = st.session_state.selected_features
+            
+            # Filter to only include features that exist in dataframe
+            features = [f for f in features if f in df.columns]
+            
+            st.markdown(f"**Using {len(features)} features from Feature Selection:**")
+            st.markdown(f"*{', '.join(features[:10])}{'...' if len(features) > 10 else ''}*")
+        else:
+            st.warning("⚠️ No features selected! Please run Feature Selection first.")
+            features = []
         
+        st.divider()
+        
+        # =============================================================
+        # MODELS TO TRAIN
+        # =============================================================
         st.markdown("### 🤖 Models to Train")
         st.markdown("""
         | Model | Type | Description |
@@ -1845,15 +1852,15 @@ feature_importances = pd.Series(model.feature_importances_,
         st.divider()
         
         # =============================================================
-        # TRAIN MODELS
+        # TRAIN MODELS BUTTON
         # =============================================================
         if len(features) == 0:
-            st.warning("⚠️ Please select at least one feature for training.")
+            st.warning("⚠️ Please run Feature Selection first to get features for training.")
         else:
             if st.button("🚀 Train Models", type="primary", use_container_width=True, key="train_models_btn"):
                 
                 # ============================================
-                # Step 1: Import Libraries (shown for clarity)
+                # Step 1: Import Libraries
                 # ============================================
                 st.markdown("### 📚 Step 1: Import Classification Model Classes")
                 st.code("""
@@ -1877,46 +1884,58 @@ from sklearn.preprocessing import LabelEncoder
                     
                     # Handle missing values
                     mask = y.notna()
-                    X = X[mask]
-                    y = y[mask]
+                    X = X.loc[mask]
+                    y = y.loc[mask]
                     
                     # Convert to numeric
                     X = X.apply(pd.to_numeric, errors='coerce')
-                    X = X.fillna(X.median())
+                    X = X.fillna(X.median(numeric_only=True))
+                    X = X.fillna(0)
                     
                     # Handle target variable
                     if y.dtype == 'object':
                         le = LabelEncoder()
-                        y = le.fit_transform(y.astype(str))
+                        y_encoded = le.fit_transform(y.astype(str))
                         st.info(f"Target encoded: {len(le.classes_)} classes - {list(le.classes_)}")
                     elif y.nunique() < 10:
-                        y = pd.to_numeric(y, errors='coerce').fillna(0).astype(int).values
+                        y_encoded = pd.to_numeric(y, errors='coerce').fillna(0).astype(int).values
                     else:
-                        y_np = pd.to_numeric(y, errors='coerce').fillna(y.median()).values
+                        y_np = pd.to_numeric(y, errors='coerce').fillna(0).values
                         try:
-                            y = pd.qcut(y_np, q=4, labels=False, duplicates='drop')
+                            y_encoded = pd.qcut(y_np, q=4, labels=False, duplicates='drop')
                         except:
                             percentiles = np.percentile(y_np[~np.isnan(y_np)], [25, 50, 75])
-                            y = np.digitize(y_np, percentiles)
+                            y_encoded = np.digitize(y_np, percentiles)
                     
-                    y = np.asarray(y, dtype=int).flatten()
+                    y_encoded = np.asarray(y_encoded, dtype=int).flatten()
                     
-                    # Remove NaN columns
+                    # Remove NaN
+                    valid_y = ~np.isnan(y_encoded)
+                    X = X.iloc[valid_y]
+                    y_encoded = y_encoded[valid_y]
+                    
+                    # Drop any remaining NaN columns
                     X = X.dropna(axis=1, how='any')
                     
                     # Ensure matching lengths
-                    min_len = min(len(X), len(y))
+                    min_len = min(len(X), len(y_encoded))
                     X = X.iloc[:min_len]
-                    y = y[:min_len]
+                    y_encoded = y_encoded[:min_len]
                     
                     # Train-test split
-                    X_train, X_test, y_train, y_test = train_test_split(
-                        X, y, test_size=test_size, random_state=42, stratify=y if len(np.unique(y)) > 1 else None
-                    )
+                    unique_classes = len(np.unique(y_encoded))
+                    if unique_classes > 1:
+                        X_train, X_test, y_train, y_test = train_test_split(
+                            X, y_encoded, test_size=test_size, random_state=42, 
+                            stratify=y_encoded if unique_classes > 1 else None
+                        )
+                    else:
+                        X_train, X_test, y_train, y_test = train_test_split(
+                            X, y_encoded, test_size=test_size, random_state=42
+                        )
                     
                     st.success(f"✅ Data split: {X_train.shape[0]} training | {X_test.shape[0]} testing | {X_train.shape[1]} features")
                     
-                    # Show data shapes
                     col1, col2, col3, col4 = st.columns(4)
                     with col1:
                         st.metric("Training Samples", X_train.shape[0])
@@ -1925,7 +1944,7 @@ from sklearn.preprocessing import LabelEncoder
                     with col3:
                         st.metric("Features", X_train.shape[1])
                     with col4:
-                        st.metric("Classes", len(np.unique(y)))
+                        st.metric("Classes", unique_classes)
                 
                 st.divider()
                 
@@ -1941,9 +1960,6 @@ from sklearn.preprocessing import LabelEncoder
                 lr_progress = st.progress(0)
                 
                 try:
-                    from sklearn.linear_model import LogisticRegression
-                    
-                    # Instantiate
                     logistic_regression_model = LogisticRegression(
                         random_state=42, 
                         max_iter=1000,
@@ -1952,7 +1968,6 @@ from sklearn.preprocessing import LabelEncoder
                     lr_progress.progress(25)
                     st.markdown("- ✅ Logistic Regression model instantiated")
                     
-                    # Train
                     logistic_regression_model.fit(X_train, y_train)
                     lr_progress.progress(100)
                     models['Logistic Regression'] = logistic_regression_model
@@ -1970,9 +1985,6 @@ from sklearn.preprocessing import LabelEncoder
                 rf_progress = st.progress(0)
                 
                 try:
-                    from sklearn.ensemble import RandomForestClassifier
-                    
-                    # Instantiate
                     random_forest_model = RandomForestClassifier(
                         n_estimators=100,
                         random_state=42,
@@ -1982,7 +1994,6 @@ from sklearn.preprocessing import LabelEncoder
                     rf_progress.progress(25)
                     st.markdown("- ✅ RandomForestClassifier model instantiated")
                     
-                    # Train
                     random_forest_model.fit(X_train, y_train)
                     rf_progress.progress(100)
                     models['Random Forest'] = random_forest_model
@@ -2000,9 +2011,6 @@ from sklearn.preprocessing import LabelEncoder
                 gb_progress = st.progress(0)
                 
                 try:
-                    from sklearn.ensemble import GradientBoostingClassifier
-                    
-                    # Instantiate
                     gradient_boosting_model = GradientBoostingClassifier(
                         n_estimators=100,
                         random_state=42
@@ -2010,7 +2018,6 @@ from sklearn.preprocessing import LabelEncoder
                     gb_progress.progress(25)
                     st.markdown("- ✅ GradientBoostingClassifier model instantiated")
                     
-                    # Train
                     gradient_boosting_model.fit(X_train, y_train)
                     gb_progress.progress(100)
                     models['Gradient Boosting'] = gradient_boosting_model
@@ -2035,7 +2042,7 @@ from sklearn.preprocessing import LabelEncoder
                 else:
                     st.success(f"✅ {trained_count}/3 models trained successfully!")
                     
-                    # Model summary table
+                    # Model summary
                     summary_data = []
                     for name, model in models.items():
                         train_score = model.score(X_train, y_train)
@@ -2043,8 +2050,7 @@ from sklearn.preprocessing import LabelEncoder
                         summary_data.append({
                             'Model': name,
                             'Train Score': round(train_score, 4),
-                            'Test Score': round(test_score, 4),
-                            'Parameters': str(model.get_params()).count(',') + 1
+                            'Test Score': round(test_score, 4)
                         })
                     
                     summary_df = pd.DataFrame(summary_data)
@@ -2056,12 +2062,11 @@ from sklearn.preprocessing import LabelEncoder
                     st.session_state.X_test = X_test
                     st.session_state.y_test = y_test
                     
-                    # Show best model
-                    if len(summary_df) > 0:
-                        best_idx = summary_df['Test Score'].idxmax()
-                        best_model = summary_df.iloc[best_idx]['Model']
-                        best_score = summary_df.iloc[best_idx]['Test Score']
-                        st.success(f"🏆 **Best Model: {best_model}** (Test Score: {best_score})")
+                    # Best model
+                    best_idx = summary_df['Test Score'].idxmax()
+                    best_model = summary_df.iloc[best_idx]['Model']
+                    best_score = summary_df.iloc[best_idx]['Test Score']
+                    st.success(f"🏆 **Best Model: {best_model}** (Test Score: {best_score})")
                 
                 st.divider()
                 
@@ -2085,7 +2090,7 @@ from sklearn.preprocessing import LabelEncoder
                     eval_df = pd.DataFrame(eval_data)
                     st.dataframe(eval_df, use_container_width=True, hide_index=True)
                     
-                    # Bar chart comparison
+                    # Bar chart
                     fig = px.bar(
                         eval_df.melt(id_vars='Model', var_name='Metric', value_name='Score'),
                         x='Model', y='Score', color='Metric',
@@ -2095,7 +2100,7 @@ from sklearn.preprocessing import LabelEncoder
                     )
                     st.plotly_chart(fig, use_container_width=True, key="model_eval_chart")
                     
-                    # Download results
+                    # Download
                     csv_results = eval_df.to_csv(index=False)
                     st.download_button(
                         "📥 Download Evaluation Results",
