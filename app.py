@@ -1485,29 +1485,6 @@ def main():
         # ─────────────────────────────────────────────────────────────
         # STEP 4: Apply Feature Selection
         # ─────────────────────────────────────────────────────────────
-    # ==================== FEATURE SELECTION PAGE ====================
-    elif section == "🛠️ Feature Selection & Relevance":
-        st.markdown('<p class="section-header">🛠️ Feature Selection & Relevance</p>', unsafe_allow_html=True)
-        
-        data = st.session_state.processed_data if st.session_state.processed_data is not None else st.session_state.data
-        if data is None: 
-            st.warning("⚠️ Load data first!")
-            return
-        
-        df = data.copy()
-        
-        # STEP 1: Understand the Goal
-        # ... (keep your existing Step 1 code)
-        
-        # STEP 2: Explore Feature Selection Methods  
-        # ... (keep your existing Step 2 code)
-        
-        # STEP 3: Quick EDA
-        # ... (keep your existing Step 3 code)
-        
-        # =============================================================
-        # STEP 4: Apply Feature Selection (REPLACE THIS ENTIRE SECTION)
-        # =============================================================
         st.markdown("## 🎯 Step 4: Implement Selected Method(s)")
         
         st.markdown("""
