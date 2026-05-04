@@ -1485,154 +1485,143 @@ def main():
         # ─────────────────────────────────────────────────────────────
         # STEP 4: Apply Feature Selection
         # ─────────────────────────────────────────────────────────────
-        st.markdown("## 🎯 Step 4: Apply Feature Selection")
+        st.markdown("## 🎯 Step 4: Implement Selected Method(s)")
         
         st.markdown("""
-        <div style='background-color: #d4edda; padding: 1rem; border-radius: 8px;'>
-        <strong>✅ Selected Methods:</strong> Mutual Information, Chi-Squared, Random Forest
-        </div>
-        """, unsafe_allow_html=True)
+        **Subtask:** Write and execute code to apply the chosen feature selection or ranking method(s) to the preprocessed dataset.
         
-        st.markdown("")
-        
-        # Import necessary libraries
-        st.markdown("### 📚 Libraries Used")
-        st.code("""
-from sklearn.feature_selection import mutual_info_classif, chi2
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import LabelEncoder
-        """, language='python')
+        **Reasoning:** Import the necessary libraries, separate features and target, apply Mutual Information and Chi-squared tests, 
+        train a RandomForestClassifier and get feature importances, store and display the top N features from each method.
+        """)
         
         st.divider()
         
-        # Select features
+        # Show the code
+        with st.expander("📝 View Implementation Code", expanded=False):
+            st.code("""
+from sklearn.feature_selection import mutual_info_classif, SelectKBest, chi2
+from sklearn.ensemble import RandomForestClassifier
+import numpy as np
+
+# Identify categorical columns from the original dataframe
+categorical_cols = ['Location', 'Shape', 'Polymer_Type', 'pH', 'Salinity', 
+                    'Industrial_Activity', 'Population_Density', 'Risk_Type', 
+                    'Risk_Level', 'Author', 'Source']
+
+# Separate features (X) from the one-hot encoded dataframe
+df_encoded = pd.get_dummies(df, columns=categorical_cols, drop_first=True)
+
+# Separate features (X) and target (y)
+y = df['Risk_Level']
+
+# Identify one-hot encoded columns
+original_cols = df.columns.tolist()
+original_cols.remove('Risk_Level')
+ohe_cols = [col for col in df_encoded.columns if col not in original_cols]
+X = df_encoded[ohe_cols]
+
+# Apply Mutual Information
+mi_scores = mutual_info_classif(X, y, random_state=42)
+mi_scores = pd.Series(mi_scores, name="Mutual Information Scores", index=X.columns)
+mi_scores = mi_scores.sort_values(ascending=False)
+
+# Apply Chi-squared test
+chi2_scores, p_values = chi2(X, y)
+chi2_scores = pd.Series(chi2_scores, name="Chi-squared Scores", index=X.columns)
+chi2_scores = chi2_scores.sort_values(ascending=False)
+
+# Train RandomForestClassifier and get feature importances
+model = RandomForestClassifier(n_estimators=100, random_state=42)
+model.fit(X, y)
+feature_importances = pd.Series(model.feature_importances_, 
+                                name="Feature Importances", index=X.columns)
+feature_importances = feature_importances.sort_values(ascending=False)
+            """, language='python')
+        
+        st.divider()
+        
+        # Configuration
         st.markdown("### 🔧 Configuration")
-        
-        # Only use NUMERICAL columns for feature selection
-        nums = df.select_dtypes(include=['float64', 'int64', 'int32']).columns.tolist()
-        if target in nums: 
-            nums.remove(target)
-        
-        if len(nums) == 0:
-            st.error("❌ No numerical features found! Feature selection requires numerical data.")
-            st.info("Please preprocess your data first (encode categorical variables).")
-            st.stop()
         
         col1, col2, col3 = st.columns(3)
         with col1:
-            feat_target = st.selectbox(
-                "Target for Feature Selection:", 
-                df.columns.tolist(),
-                index=df.columns.tolist().index(target) if target in df.columns else 0,
-                key="fs_feat_target"
+            n_top_features = st.slider(
+                "Top N features to display:", 
+                min_value=5, 
+                max_value=50, 
+                value=20, 
+                key="fs_n_top_display"
             )
         with col2:
-            # Fix: Ensure min, max, and default values are valid
-            max_val = len(nums)
-            min_val = min(5, max_val)
-            default_val = min(20, max_val)
-            
-            if max_val < 5:
-                st.warning(f"Only {max_val} numerical features available.")
-                n_top = max_val
-            else:
-                n_top = st.slider(
-                    "Top N features to display:", 
-                    min_value=min_val, 
-                    max_value=max_val, 
-                    value=default_val, 
-                    key="fs_n_top"
-                )
+            st.markdown("**Categorical Columns:**")
+            categorical_cols = ['Location', 'Shape', 'Polymer_Type', 'pH', 'Salinity', 
+                               'Industrial_Activity', 'Population_Density', 'Risk_Type', 
+                               'Risk_Level', 'Author', 'Source']
+            available_cats = [c for c in categorical_cols if c in df.columns]
+            st.write(f"{len(available_cats)} columns available")
         with col3:
-            st.metric("Available Numeric Features", len(nums))
+            st.markdown("**Target Variable:**")
+            st.write("Risk_Level")
         
         st.divider()
         
-        if st.button("🚀 Calculate Feature Importance", type="primary", use_container_width=True, key="fs_calc_btn"):
-            with st.spinner('Separating features and target, applying feature selection methods...'):
+        if st.button("🚀 Run Feature Selection", type="primary", use_container_width=True, key="fs_run_btn"):
+            with st.spinner('Running feature selection...'):
                 try:
                     # ============================================
-                    # Step 1: Separate features and target
+                    # Step 1: Import libraries and prepare data
                     # ============================================
-                    st.markdown("### 1️⃣ Separate Features and Target")
+                    st.markdown("### 📚 Step 1: Import Libraries & Prepare Data")
                     
-                    # Use ONLY numerical columns
-                    X = df[nums].copy()
-                    y = df[feat_target].copy()
+                    from sklearn.feature_selection import mutual_info_classif, chi2
+                    from sklearn.ensemble import RandomForestClassifier
                     
-                    # Handle missing values in target
-                    mask = y.notna()
-                    X = X.loc[mask]
-                    y = y.loc[mask]
+                    # Identify categorical columns
+                    categorical_cols = ['Location', 'Shape', 'Polymer_Type', 'pH', 'Salinity', 
+                                       'Industrial_Activity', 'Population_Density', 'Risk_Type', 
+                                       'Risk_Level', 'Author', 'Source']
+                    available_cats = [c for c in categorical_cols if c in df.columns]
                     
-                    # Convert ALL columns to numeric, replacing non-numeric with NaN
-                    for col in X.columns:
-                        X[col] = pd.to_numeric(X[col], errors='coerce')
+                    st.success(f"✅ Libraries imported. {len(available_cats)} categorical columns identified.")
                     
-                    # Fill NaN with column median (only for numeric columns)
-                    X = X.fillna(X.median(numeric_only=True))
+                    # Separate features (X) from one-hot encoded dataframe
+                    df_encoded = pd.get_dummies(df, columns=available_cats, drop_first=True)
                     
-                    # Drop any columns that are all NaN
-                    X = X.dropna(axis=1, how='all')
+                    # Separate features (X) and target (y)
+                    y = df['Risk_Level']
                     
-                    # If any NaN remains, fill with 0
-                    X = X.fillna(0)
+                    # Identify one-hot encoded columns
+                    original_cols = df.columns.tolist()
+                    if 'Risk_Level' in original_cols:
+                        original_cols.remove('Risk_Level')
                     
-                    # Handle target variable
+                    ohe_cols = [col for col in df_encoded.columns if col not in original_cols]
+                    X = df_encoded[ohe_cols]
+                    
+                    st.success(f"✅ Data prepared: X = {X.shape[0]} rows × {X.shape[1]} features, y = {len(y)} samples")
+                    
+                    # Encode target if needed
                     if y.dtype == 'object':
-                        st.info(f"Target '{feat_target}' is categorical with {y.nunique()} classes")
                         le = LabelEncoder()
                         y_encoded = le.fit_transform(y.astype(str))
-                        st.code(f"Classes: {list(le.classes_)}")
-                    elif y.nunique() < 10:
-                        st.info(f"Target '{feat_target}' has {y.nunique()} unique values - treating as classification")
-                        y_encoded = pd.to_numeric(y, errors='coerce').fillna(0).astype(int).values
+                        st.info(f"Target encoded: {len(le.classes_)} classes")
                     else:
-                        st.info(f"Target '{feat_target}' is continuous - binning into 4 categories")
-                        y_np = pd.to_numeric(y, errors='coerce').fillna(0).values
-                        try:
-                            y_encoded = pd.qcut(y_np, q=4, labels=False, duplicates='drop')
-                        except:
-                            percentiles = np.percentile(y_np[~np.isnan(y_np)], [25, 50, 75])
-                            y_encoded = np.digitize(y_np, percentiles)
-                    
-                    # Ensure y is a plain numpy array of integers
-                    y_encoded = np.asarray(y_encoded, dtype=int).flatten()
-                    
-                    # Remove any NaN from y
-                    valid_y = ~np.isnan(y_encoded)
-                    X = X.iloc[valid_y]
-                    y_encoded = y_encoded[valid_y]
-                    
-                    # Ensure matching lengths
-                    min_len = min(len(X), len(y_encoded))
-                    X = X.iloc[:min_len]
-                    y_encoded = y_encoded[:min_len]
-                    
-                    st.success(f"✅ Features: {X.shape[0]} samples × {X.shape[1]} features | Target: {len(y_encoded)} samples")
-                    
-                    if X.shape[1] == 0:
-                        ст.error("❌ No valid features after cleaning!")
-                        ст.stop()
-                    
-                    st.dataframe(X.head(), use_container_width=True)
-                    
-                    # Update n_top if needed
-                    actual_n_top = min(n_top, X.shape[1])
+                        y_encoded = y
                     
                     st.divider()
                     
                     # ============================================
                     # Step 2: Apply Mutual Information
                     # ============================================
-                    st.markdown("### 2️⃣ Mutual Information Scores")
-                    st.markdown("*Measures the dependency between each feature and the target variable*")
+                    st.markdown("### 📊 Step 2: Mutual Information Scores")
                     
                     mi_scores = mutual_info_classif(X, y_encoded, random_state=42)
-                    mi_series = pd.Series(mi_scores, index=X.columns).sort_values(ascending=False)
+                    mi_series = pd.Series(mi_scores, name="Mutual Information Scores", index=X.columns)
+                    mi_series = mi_series.sort_values(ascending=False)
                     
-                    # Display top N
-                    mi_top = mi_series.head(actual_n_top)
+                    # Display
+                    st.markdown(f"**Top {n_top_features} features based on Mutual Information:**")
+                    mi_top = mi_series.head(n_top_features)
                     mi_df = pd.DataFrame({
                         'Rank': range(1, len(mi_top) + 1),
                         'Feature': mi_top.index,
@@ -1641,14 +1630,13 @@ from sklearn.preprocessing import LabelEncoder
                     
                     col1, col2 = st.columns([3, 2])
                     with col1:
-                        st.markdown(f"**Top {actual_n_top} Features by Mutual Information:**")
                         st.dataframe(mi_df, use_container_width=True, hide_index=True)
                     with col2:
                         fig = px.bar(mi_df.head(15), x='Feature', y='Mutual Information Score',
-                                   title='Mutual Information Scores', color='Mutual Information Score',
+                                   title='Top 15 - Mutual Information', color='Mutual Information Score',
                                    color_continuous_scale='Blues')
                         fig.update_layout(height=400, xaxis_tickangle=-45)
-                        st.plotly_chart(fig, use_container_width=True, key="fs_mi_chart")
+                        st.plotly_chart(fig, use_container_width=True, key="fs_mi_bar")
                     
                     st.session_state.mutual_info = mi_series
                     
@@ -1657,15 +1645,16 @@ from sklearn.preprocessing import LabelEncoder
                     # ============================================
                     # Step 3: Apply Chi-Squared Test
                     # ============================================
-                    st.markdown("### 3️⃣ Chi-Squared Test Scores")
-                    st.markdown("*Tests statistical independence between each feature and the target*")
+                    st.markdown("### 🔢 Step 3: Chi-Squared Test Scores")
                     
-                    X_chi2 = X - X.min() + 1
-                    chi2_scores, p_values = chi2(X_chi2, y_encoded)
-                    chi2_series = pd.Series(chi2_scores, index=X.columns).sort_values(ascending=False)
-                    pval_series = pd.Series(p_values, index=X.columns)
+                    chi2_scores, p_values = chi2(X, y_encoded)
+                    chi2_series = pd.Series(chi2_scores, name="Chi-squared Scores", index=X.columns)
+                    chi2_series = chi2_series.sort_values(ascending=False)
+                    pval_series = pd.Series(p_values, name="P-Values", index=X.columns)
                     
-                    chi2_top = chi2_series.head(actual_n_top)
+                    # Display
+                    st.markdown(f"**Top {n_top_features} features based on Chi-squared Test:**")
+                    chi2_top = chi2_series.head(n_top_features)
                     chi2_df = pd.DataFrame({
                         'Rank': range(1, len(chi2_top) + 1),
                         'Feature': chi2_top.index,
@@ -1675,38 +1664,35 @@ from sklearn.preprocessing import LabelEncoder
                     
                     col1, col2 = st.columns([3, 2])
                     with col1:
-                        st.markdown(f"**Top {actual_n_top} Features by Chi-Squared:**")
                         st.dataframe(chi2_df, use_container_width=True, hide_index=True)
                     with col2:
                         fig = px.bar(chi2_df.head(15), x='Feature', y='Chi-Squared Score',
-                                   title='Chi-Squared Scores', color='Chi-Squared Score',
+                                   title='Top 15 - Chi-Squared', color='Chi-Squared Score',
                                    color_continuous_scale='Reds')
                         fig.update_layout(height=400, xaxis_tickangle=-45)
-                        st.plotly_chart(fig, use_container_width=True, key="fs_chi2_chart")
+                        st.plotly_chart(fig, use_container_width=True, key="fs_chi2_bar")
                     
                     st.session_state.chi2_scores = chi2_series
                     
                     st.divider()
                     
                     # ============================================
-                    # Step 4: Train Random Forest and get importances
+                    # Step 4: Random Forest Feature Importances
                     # ============================================
-                    st.markdown("### 4️⃣ Random Forest Feature Importances")
-                    st.markdown("*Trains a RandomForestClassifier and extracts feature importances*")
+                    st.markdown("### 🌲 Step 4: Random Forest Feature Importances")
                     
                     with st.spinner('Training RandomForestClassifier...'):
-                        rf = RandomForestClassifier(
-                            n_estimators=100, 
-                            random_state=42, 
-                            n_jobs=-1,
-                            class_weight='balanced'
-                        )
-                        rf.fit(X, y_encoded)
-                        st.success(f"✅ Random Forest trained! Training Score: {rf.score(X, y_encoded):.4f}")
+                        model = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
+                        model.fit(X, y_encoded)
+                        st.success(f"✅ Model trained! Score: {model.score(X, y_encoded):.4f}")
                     
-                    rf_series = pd.Series(rf.feature_importances_, index=X.columns).sort_values(ascending=False)
+                    feature_importances = pd.Series(model.feature_importances_, 
+                                                   name="Feature Importances", index=X.columns)
+                    feature_importances = feature_importances.sort_values(ascending=False)
                     
-                    rf_top = rf_series.head(actual_n_top)
+                    # Display
+                    st.markdown(f"**Top {n_top_features} features based on RandomForest Feature Importances:**")
+                    rf_top = feature_importances.head(n_top_features)
                     rf_df = pd.DataFrame({
                         'Rank': range(1, len(rf_top) + 1),
                         'Feature': rf_top.index,
@@ -1716,17 +1702,16 @@ from sklearn.preprocessing import LabelEncoder
                     
                     col1, col2 = st.columns([3, 2])
                     with col1:
-                        st.markdown(f"**Top {actual_n_top} Features by Random Forest:**")
                         st.dataframe(rf_df, use_container_width=True, hide_index=True)
                     with col2:
                         fig = px.bar(rf_df.head(15), x='Feature', y='Importance',
-                                   title='Random Forest Feature Importances', color='Importance',
+                                   title='Top 15 - Random Forest', color='Importance',
                                    color_continuous_scale='Greens')
                         fig.update_layout(height=400, xaxis_tickangle=-45)
-                        st.plotly_chart(fig, use_container_width=True, key="fs_rf_chart")
+                        st.plotly_chart(fig, use_container_width=True, key="fs_rf_bar")
                     
-                    st.session_state.feature_importance = rf_series
-                    st.session_state.selected_features = rf_series.head(10).index.tolist()
+                    st.session_state.feature_importance = feature_importances
+                    st.session_state.selected_features = feature_importances.head(10).index.tolist()
                     
                     st.divider()
                     
@@ -1734,17 +1719,35 @@ from sklearn.preprocessing import LabelEncoder
                     # Step 5: Combined Summary
                     # ============================================
                     st.markdown("### 📋 Combined Feature Selection Summary")
-                    st.markdown("*Top features comparison across all 3 methods*")
                     
-                    top_features_rf = rf_series.head(actual_n_top).index.tolist()
-                    top_features_mi = mi_series.head(actual_n_top).index.tolist()
-                    top_features_chi2 = chi2_series.head(actual_n_top).index.tolist()
+                    # Top features from all methods
+                    top_mi_set = set(mi_series.head(n_top_features).index)
+                    top_chi2_set = set(chi2_series.head(n_top_features).index)
+                    top_rf_set = set(feature_importances.head(n_top_features).index)
                     
-                    all_top = list(dict.fromkeys(top_features_rf + top_features_mi + top_features_chi2))[:actual_n_top]
+                    # Features in all 3 methods
+                    common_all = top_mi_set & top_chi2_set & top_rf_set
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("Features Analyzed", X.shape[1])
+                    with col2:
+                        st.metric("Common in All 3", len(common_all))
+                    with col3:
+                        st.metric("Common MI & RF", len(top_mi_set & top_rf_set))
+                    with col4:
+                        st.metric("Common Chi2 & RF", len(top_chi2_set & top_rf_set))
+                    
+                    # Combined table
+                    all_top = list(dict.fromkeys(
+                        feature_importances.head(n_top_features).index.tolist() +
+                        mi_series.head(n_top_features).index.tolist() +
+                        chi2_series.head(n_top_features).index.tolist()
+                    ))[:n_top_features]
                     
                     combined_df = pd.DataFrame({
                         'Feature': all_top,
-                        'RF Importance': [round(rf_series.get(f, 0), 6) for f in all_top],
+                        'RF Importance': [round(feature_importances.get(f, 0), 6) for f in all_top],
                         'MI Score': [round(mi_series.get(f, 0), 6) for f in all_top],
                         'Chi2 Score': [round(chi2_series.get(f, 0), 4) for f in all_top]
                     })
@@ -1754,27 +1757,11 @@ from sklearn.preprocessing import LabelEncoder
                     
                     st.dataframe(combined_df, use_container_width=True, hide_index=True)
                     
-                    # Method agreement
-                    rf_set = set(rf_series.head(actual_n_top).index)
-                    mi_set = set(mi_series.head(actual_n_top).index)
-                    chi2_set = set(chi2_series.head(actual_n_top).index)
-                    common_all = rf_set & mi_set & chi2_set
-                    
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Common in All 3", len(common_all))
-                    with col2:
-                        st.metric("Common RF & MI", len(rf_set & mi_set))
-                    with col3:
-                        st.metric("Common RF & Chi2", len(rf_set & chi2_set))
-                    
-                    if len(common_all) > 0:
-                        st.success(f"**Features selected by ALL methods:** {', '.join(list(common_all)[:5])}")
-                    
-                    st.session_state.selected_features = rf_series.head(10).index.tolist()
+                    # Store for modeling
+                    st.session_state.selected_features = feature_importances.head(10).index.tolist()
                     
                     st.success(f"✅ Feature selection complete!")
-                    st.info(f"**Top 10 features stored for modeling:** {', '.join(st.session_state.selected_features)}")
+                    st.info(f"**Top 10 features stored:** {', '.join(st.session_state.selected_features[:10])}")
                     
                     # Download
                     csv_combined = combined_df.to_csv(index=False)
@@ -1783,12 +1770,12 @@ from sklearn.preprocessing import LabelEncoder
                         csv_combined,
                         "feature_selection_report.csv",
                         "text/csv",
-                        key="fs_download"
+                        key="fs_download_report"
                     )
                     
                 except Exception as e:
                     st.error(f"❌ Feature selection error: {str(e)}")
-                    st.info("Try selecting a different target variable or check your data for issues.")
+                    st.info("Please check that your data has the required categorical columns and Risk_Level target.")
        # ==================== MODELING PAGE ====================
     elif section == "🤖 Modeling":
         st.markdown('<p class="section-header">🤖 Model Training</p>', unsafe_allow_html=True)
