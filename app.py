@@ -1499,22 +1499,27 @@ def main():
         # Show the code
         with st.expander("📝 View Implementation Code", expanded=False):
             st.code("""
-from sklearn.feature_selection import mutual_info_classif, SelectKBest, chi2
+from sklearn.feature_selection import mutual_info_classif, chi2
 from sklearn.ensemble import RandomForestClassifier
-import numpy as np
+from sklearn.preprocessing import LabelEncoder
 
-# Identify categorical columns from the original dataframe
+# Identify categorical columns
 categorical_cols = ['Location', 'Shape', 'Polymer_Type', 'pH', 'Salinity', 
                     'Industrial_Activity', 'Population_Density', 'Risk_Type', 
                     'Risk_Level', 'Author', 'Source']
 
-# Separate features (X) from the one-hot encoded dataframe
+# One-hot encode
 df_encoded = pd.get_dummies(df, columns=categorical_cols, drop_first=True)
 
-# Separate features (X) and target (y)
+# Separate features and target
 y = df['Risk_Level']
 
-# Identify one-hot encoded columns
+# Encode target if categorical
+if y.dtype == 'object':
+    le = LabelEncoder()
+    y = le.fit_transform(y.astype(str))
+
+# Get one-hot encoded columns
 original_cols = df.columns.tolist()
 original_cols.remove('Risk_Level')
 ohe_cols = [col for col in df_encoded.columns if col not in original_cols]
@@ -1522,26 +1527,29 @@ X = df_encoded[ohe_cols]
 
 # Apply Mutual Information
 mi_scores = mutual_info_classif(X, y, random_state=42)
-mi_scores = pd.Series(mi_scores, name="Mutual Information Scores", index=X.columns)
-mi_scores = mi_scores.sort_values(ascending=False)
+mi_scores = pd.Series(mi_scores, name="MI Scores", index=X.columns).sort_values(ascending=False)
 
-# Apply Chi-squared test
+# Apply Chi-squared
 chi2_scores, p_values = chi2(X, y)
-chi2_scores = pd.Series(chi2_scores, name="Chi-squared Scores", index=X.columns)
-chi2_scores = chi2_scores.sort_values(ascending=False)
+chi2_scores = pd.Series(chi2_scores, name="Chi2 Scores", index=X.columns).sort_values(ascending=False)
 
-# Train RandomForestClassifier and get feature importances
+# Random Forest
 model = RandomForestClassifier(n_estimators=100, random_state=42)
 model.fit(X, y)
 feature_importances = pd.Series(model.feature_importances_, 
-                                name="Feature Importances", index=X.columns)
-feature_importances = feature_importances.sort_values(ascending=False)
+                                name="RF Importances", index=X.columns).sort_values(ascending=False)
             """, language='python')
         
         st.divider()
         
         # Configuration
         st.markdown("### 🔧 Configuration")
+        
+        # Check if Risk_Level exists
+        if 'Risk_Level' not in df.columns:
+            st.error("❌ 'Risk_Level' column not found! This implementation requires 'Risk_Level' as target.")
+            st.info("Available columns: " + ", ".join(df.columns.tolist()))
+            st.stop()
         
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -1553,65 +1561,65 @@ feature_importances = feature_importances.sort_values(ascending=False)
                 key="fs_n_top_display"
             )
         with col2:
-            st.markdown("**Categorical Columns:**")
             categorical_cols = ['Location', 'Shape', 'Polymer_Type', 'pH', 'Salinity', 
                                'Industrial_Activity', 'Population_Density', 'Risk_Type', 
                                'Risk_Level', 'Author', 'Source']
             available_cats = [c for c in categorical_cols if c in df.columns]
-            st.write(f"{len(available_cats)} columns available")
+            st.metric("Categorical Columns", len(available_cats))
         with col3:
-            st.markdown("**Target Variable:**")
-            st.write("Risk_Level")
+            st.metric("Target Classes", df['Risk_Level'].nunique())
         
         st.divider()
         
         if st.button("🚀 Run Feature Selection", type="primary", use_container_width=True, key="fs_run_btn"):
             with st.spinner('Running feature selection...'):
                 try:
+                    from sklearn.feature_selection import mutual_info_classif, chi2
+                    from sklearn.ensemble import RandomForestClassifier
+                    from sklearn.preprocessing import LabelEncoder
+                    
                     # ============================================
-                    # Step 1: Import libraries and prepare data
+                    # Step 1: Prepare Data
                     # ============================================
                     st.markdown("### 📚 Step 1: Import Libraries & Prepare Data")
                     
-                    from sklearn.feature_selection import mutual_info_classif, chi2
-                    from sklearn.ensemble import RandomForestClassifier
-                    
-                    # Identify categorical columns
+                    # Identify available categorical columns
                     categorical_cols = ['Location', 'Shape', 'Polymer_Type', 'pH', 'Salinity', 
                                        'Industrial_Activity', 'Population_Density', 'Risk_Type', 
                                        'Risk_Level', 'Author', 'Source']
                     available_cats = [c for c in categorical_cols if c in df.columns]
                     
-                    st.success(f"✅ Libraries imported. {len(available_cats)} categorical columns identified.")
+                    st.success(f"✅ Libraries imported. {len(available_cats)} categorical columns found.")
                     
-                    # Separate features (X) from one-hot encoded dataframe
+                    # One-hot encode categorical columns
                     df_encoded = pd.get_dummies(df, columns=available_cats, drop_first=True)
                     
-                    # Separate features (X) and target (y)
-                    y = df['Risk_Level']
+                    # Separate target (y)
+                    y = df['Risk_Level'].copy()
                     
-                    # Identify one-hot encoded columns
+                    # Encode target variable to numeric
+                    le = LabelEncoder()
+                    y_encoded = le.fit_transform(y.astype(str))
+                    
+                    st.info(f"Target encoded: {len(le.classes_)} classes → {list(le.classes_)}")
+                    
+                    # Get one-hot encoded feature columns
                     original_cols = df.columns.tolist()
                     if 'Risk_Level' in original_cols:
                         original_cols.remove('Risk_Level')
                     
                     ohe_cols = [col for col in df_encoded.columns if col not in original_cols]
-                    X = df_encoded[ohe_cols]
+                    X = df_encoded[ohe_cols].copy()
                     
-                    st.success(f"✅ Data prepared: X = {X.shape[0]} rows × {X.shape[1]} features, y = {len(y)} samples")
+                    # Ensure X is numeric
+                    X = X.apply(pd.to_numeric, errors='coerce').fillna(0)
                     
-                    # Encode target if needed
-                    if y.dtype == 'object':
-                        le = LabelEncoder()
-                        y_encoded = le.fit_transform(y.astype(str))
-                        st.info(f"Target encoded: {len(le.classes_)} classes")
-                    else:
-                        y_encoded = y
+                    st.success(f"✅ Data prepared: X = {X.shape[0]} rows × {X.shape[1]} features")
                     
                     st.divider()
                     
                     # ============================================
-                    # Step 2: Apply Mutual Information
+                    # Step 2: Mutual Information
                     # ============================================
                     st.markdown("### 📊 Step 2: Mutual Information Scores")
                     
@@ -1619,7 +1627,6 @@ feature_importances = feature_importances.sort_values(ascending=False)
                     mi_series = pd.Series(mi_scores, name="Mutual Information Scores", index=X.columns)
                     mi_series = mi_series.sort_values(ascending=False)
                     
-                    # Display
                     st.markdown(f"**Top {n_top_features} features based on Mutual Information:**")
                     mi_top = mi_series.head(n_top_features)
                     mi_df = pd.DataFrame({
@@ -1643,16 +1650,16 @@ feature_importances = feature_importances.sort_values(ascending=False)
                     st.divider()
                     
                     # ============================================
-                    # Step 3: Apply Chi-Squared Test
+                    # Step 3: Chi-Squared Test
                     # ============================================
                     st.markdown("### 🔢 Step 3: Chi-Squared Test Scores")
                     
+                    # Chi2 requires non-negative values
                     chi2_scores, p_values = chi2(X, y_encoded)
                     chi2_series = pd.Series(chi2_scores, name="Chi-squared Scores", index=X.columns)
                     chi2_series = chi2_series.sort_values(ascending=False)
                     pval_series = pd.Series(p_values, name="P-Values", index=X.columns)
                     
-                    # Display
                     st.markdown(f"**Top {n_top_features} features based on Chi-squared Test:**")
                     chi2_top = chi2_series.head(n_top_features)
                     chi2_df = pd.DataFrame({
@@ -1677,20 +1684,23 @@ feature_importances = feature_importances.sort_values(ascending=False)
                     st.divider()
                     
                     # ============================================
-                    # Step 4: Random Forest Feature Importances
+                    # Step 4: Random Forest
                     # ============================================
                     st.markdown("### 🌲 Step 4: Random Forest Feature Importances")
                     
                     with st.spinner('Training RandomForestClassifier...'):
                         model = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
                         model.fit(X, y_encoded)
-                        st.success(f"✅ Model trained! Score: {model.score(X, y_encoded):.4f}")
+                        train_score = model.score(X, y_encoded)
+                        st.success(f"✅ Model trained! Training Score: {train_score:.4f}")
                     
-                    feature_importances = pd.Series(model.feature_importances_, 
-                                                   name="Feature Importances", index=X.columns)
+                    feature_importances = pd.Series(
+                        model.feature_importances_, 
+                        name="Feature Importances", 
+                        index=X.columns
+                    )
                     feature_importances = feature_importances.sort_values(ascending=False)
                     
-                    # Display
                     st.markdown(f"**Top {n_top_features} features based on RandomForest Feature Importances:**")
                     rf_top = feature_importances.head(n_top_features)
                     rf_df = pd.DataFrame({
@@ -1711,7 +1721,6 @@ feature_importances = feature_importances.sort_values(ascending=False)
                         st.plotly_chart(fig, use_container_width=True, key="fs_rf_bar")
                     
                     st.session_state.feature_importance = feature_importances
-                    st.session_state.selected_features = feature_importances.head(10).index.tolist()
                     
                     st.divider()
                     
@@ -1720,17 +1729,15 @@ feature_importances = feature_importances.sort_values(ascending=False)
                     # ============================================
                     st.markdown("### 📋 Combined Feature Selection Summary")
                     
-                    # Top features from all methods
+                    # Method agreement
                     top_mi_set = set(mi_series.head(n_top_features).index)
                     top_chi2_set = set(chi2_series.head(n_top_features).index)
                     top_rf_set = set(feature_importances.head(n_top_features).index)
-                    
-                    # Features in all 3 methods
                     common_all = top_mi_set & top_chi2_set & top_rf_set
                     
                     col1, col2, col3, col4 = st.columns(4)
                     with col1:
-                        st.metric("Features Analyzed", X.shape[1])
+                        st.metric("Total Features", X.shape[1])
                     with col2:
                         st.metric("Common in All 3", len(common_all))
                     with col3:
@@ -1775,7 +1782,7 @@ feature_importances = feature_importances.sort_values(ascending=False)
                     
                 except Exception as e:
                     st.error(f"❌ Feature selection error: {str(e)}")
-                    st.info("Please check that your data has the required categorical columns and Risk_Level target.")
+                    st.info("Please check that your data has the required categorical columns and Risk_Level target variable.")
        # ==================== MODELING PAGE ====================
     elif section == "🤖 Modeling":
         st.markdown('<p class="section-header">🤖 Model Training</p>', unsafe_allow_html=True)
