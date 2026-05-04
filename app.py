@@ -1510,6 +1510,7 @@ from sklearn.preprocessing import LabelEncoder
         
         col1, col2, col3 = st.columns(3)
         with col1:
+            # Only use NUMERICAL columns for feature selection
             nums = df.select_dtypes(include=['float64', 'int64', 'int32']).columns.tolist()
             if target in nums: 
                 nums.remove(target)
@@ -1520,9 +1521,14 @@ from sklearn.preprocessing import LabelEncoder
                 key="fs_feat_target"
             )
         with col2:
-            n_top = st.slider("Top N features to display:", 5, 50, 20, key="fs_n_top")
+            n_top = st.slider("Top N features to display:", 5, min(50, len(nums)), min(20, len(nums)), key="fs_n_top")
         with col3:
-            st.metric("Available Features", len(nums))
+            st.metric("Available Numeric Features", len(nums))
+        
+        if len(nums) == 0:
+            st.error("❌ No numerical features found! Feature selection requires numerical data.")
+            st.info("Please preprocess your data first (encode categorical variables).")
+            st.stop()
         
         st.divider()
         
@@ -1534,6 +1540,7 @@ from sklearn.preprocessing import LabelEncoder
                     # ============================================
                     st.markdown("### 1️⃣ Separate Features and Target")
                     
+                    # Use ONLY numerical columns
                     X = df[nums].copy()
                     y = df[feat_target].copy()
                     
@@ -1542,11 +1549,20 @@ from sklearn.preprocessing import LabelEncoder
                     X = X.loc[mask]
                     y = y.loc[mask]
                     
-                    # Convert X to numeric (handle any object types)
-                    X = X.apply(pd.to_numeric, errors='coerce')
-                    X = X.fillna(X.median())
+                    # Convert ALL columns to numeric, replacing non-numeric with NaN
+                    for col in X.columns:
+                        X[col] = pd.to_numeric(X[col], errors='coerce')
                     
-                    # Handle target variable - convert to numpy array to avoid type issues
+                    # Fill NaN with column median (only for numeric columns)
+                    X = X.fillna(X.median(numeric_only=True))
+                    
+                    # Drop any columns that are all NaN
+                    X = X.dropna(axis=1, how='all')
+                    
+                    # If any NaN remains, fill with 0
+                    X = X.fillna(0)
+                    
+                    # Handle target variable
                     if y.dtype == 'object':
                         st.info(f"Target '{feat_target}' is categorical with {y.nunique()} classes")
                         le = LabelEncoder()
@@ -1557,8 +1573,7 @@ from sklearn.preprocessing import LabelEncoder
                         y_encoded = pd.to_numeric(y, errors='coerce').fillna(0).astype(int).values
                     else:
                         st.info(f"Target '{feat_target}' is continuous - binning into 4 categories")
-                        # Convert to plain numpy array first
-                        y_np = pd.to_numeric(y, errors='coerce').fillna(y.median()).values
+                        y_np = pd.to_numeric(y, errors='coerce').fillna(0).values
                         try:
                             y_encoded = pd.qcut(y_np, q=4, labels=False, duplicates='drop')
                         except:
@@ -1568,8 +1583,10 @@ from sklearn.preprocessing import LabelEncoder
                     # Ensure y is a plain numpy array of integers
                     y_encoded = np.asarray(y_encoded, dtype=int).flatten()
                     
-                    # Remove any remaining NaN from X
-                    X = X.dropna(axis=1, how='any')
+                    # Remove any NaN from y
+                    valid_y = ~np.isnan(y_encoded)
+                    X = X.iloc[valid_y]
+                    y_encoded = y_encoded[valid_y]
                     
                     # Ensure matching lengths
                     min_len = min(len(X), len(y_encoded))
@@ -1577,6 +1594,11 @@ from sklearn.preprocessing import LabelEncoder
                     y_encoded = y_encoded[:min_len]
                     
                     st.success(f"✅ Features: {X.shape[0]} samples × {X.shape[1]} features | Target: {len(y_encoded)} samples")
+                    
+                    if X.shape[1] == 0:
+                        st.error("❌ No valid features after cleaning!")
+                        st.stop()
+                    
                     st.dataframe(X.head(), use_container_width=True)
                     
                     st.divider()
