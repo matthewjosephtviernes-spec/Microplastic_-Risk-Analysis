@@ -1837,6 +1837,58 @@ feature_importances = pd.Series(model.feature_importances_,
         
         st.divider()
         
+    # ==================== MODELING PAGE ====================
+    elif section == "🤖 Modeling":
+        st.markdown('<p class="section-header">🤖 Model Training</p>', unsafe_allow_html=True)
+        
+        data = st.session_state.processed_data if st.session_state.processed_data is not None else st.session_state.data
+        if data is None: 
+            st.warning("⚠️ Load data first!")
+            return
+        
+        df = data.copy()
+        
+        # =============================================================
+        # CHECK FOR FEATURES FROM FEATURE SELECTION
+        # =============================================================
+        if st.session_state.get('selected_features') is None:
+            st.warning("⚠️ No features selected! Please run Feature Selection & Relevance first.")
+            st.info("Go to 🛠️ Feature Selection & Relevance tab → Click 'Run Feature Selection'")
+            st.stop()
+        
+        features = [f for f in st.session_state.selected_features if f in df.columns]
+        
+        if len(features) == 0:
+            st.error("❌ Selected features not found in dataset!")
+            st.stop()
+        
+        # =============================================================
+        # CONFIGURATION
+        # =============================================================
+        st.markdown("## ⚙️ Model Configuration")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            target = st.selectbox(
+                "Target Variable:", 
+                df.columns.tolist(),
+                index=df.columns.tolist().index('Risk_Level') if 'Risk_Level' in df.columns else 0,
+                key="model_target"
+            )
+        with col2:
+            test_size = st.slider("Test Size:", 0.1, 0.5, 0.2, 0.05, key="model_test_size")
+        with col3:
+            st.metric("Features from Selection", len(features))
+            st.caption("Auto-loaded from Feature Selection")
+        
+        st.divider()
+        
+        # Show features being used
+        st.markdown(f"**Using {len(features)} features from Feature Selection:**")
+        st.markdown(f"*{', '.join(features[:15])}{'...' if len(features) > 15 else ''}*")
+        
+        st.divider()
+        
         # =============================================================
         # MODELS TO TRAIN
         # =============================================================
@@ -1852,12 +1904,10 @@ feature_importances = pd.Series(model.feature_importances_,
         st.divider()
         
         # =============================================================
-        # TRAIN MODELS BUTTON
+        # AUTO-TRAIN: Train models automatically when tab is opened
         # =============================================================
-        if len(features) == 0:
-            st.warning("⚠️ Please run Feature Selection first to get features for training.")
-        else:
-            if st.button("🚀 Train Models", type="primary", use_container_width=True, key="train_models_btn"):
+        if st.button("🚀 Train Models", type="primary", use_container_width=True, key="train_models_btn"):
+            with st.spinner('Training models...'):
                 
                 # ============================================
                 # Step 1: Import Libraries
@@ -1878,73 +1928,71 @@ from sklearn.preprocessing import LabelEncoder
                 # ============================================
                 st.markdown("### 📊 Step 2: Prepare Training and Testing Data")
                 
-                with st.spinner('Preparing data...'):
-                    X = df[features].copy()
-                    y = df[target].copy()
-                    
-                    # Handle missing values
-                    mask = y.notna()
-                    X = X.loc[mask]
-                    y = y.loc[mask]
-                    
-                    # Convert to numeric
-                    X = X.apply(pd.to_numeric, errors='coerce')
-                    X = X.fillna(X.median(numeric_only=True))
-                    X = X.fillna(0)
-                    
-                    # Handle target variable
-                    if y.dtype == 'object':
-                        le = LabelEncoder()
-                        y_encoded = le.fit_transform(y.astype(str))
-                        st.info(f"Target encoded: {len(le.classes_)} classes - {list(le.classes_)}")
-                    elif y.nunique() < 10:
-                        y_encoded = pd.to_numeric(y, errors='coerce').fillna(0).astype(int).values
-                    else:
-                        y_np = pd.to_numeric(y, errors='coerce').fillna(0).values
-                        try:
-                            y_encoded = pd.qcut(y_np, q=4, labels=False, duplicates='drop')
-                        except:
-                            percentiles = np.percentile(y_np[~np.isnan(y_np)], [25, 50, 75])
-                            y_encoded = np.digitize(y_np, percentiles)
-                    
-                    y_encoded = np.asarray(y_encoded, dtype=int).flatten()
-                    
-                    # Remove NaN
-                    valid_y = ~np.isnan(y_encoded)
-                    X = X.iloc[valid_y]
-                    y_encoded = y_encoded[valid_y]
-                    
-                    # Drop any remaining NaN columns
-                    X = X.dropna(axis=1, how='any')
-                    
-                    # Ensure matching lengths
-                    min_len = min(len(X), len(y_encoded))
-                    X = X.iloc[:min_len]
-                    y_encoded = y_encoded[:min_len]
-                    
-                    # Train-test split
-                    unique_classes = len(np.unique(y_encoded))
-                    if unique_classes > 1:
-                        X_train, X_test, y_train, y_test = train_test_split(
-                            X, y_encoded, test_size=test_size, random_state=42, 
-                            stratify=y_encoded if unique_classes > 1 else None
-                        )
-                    else:
-                        X_train, X_test, y_train, y_test = train_test_split(
-                            X, y_encoded, test_size=test_size, random_state=42
-                        )
-                    
-                    st.success(f"✅ Data split: {X_train.shape[0]} training | {X_test.shape[0]} testing | {X_train.shape[1]} features")
-                    
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1:
-                        st.metric("Training Samples", X_train.shape[0])
-                    with col2:
-                        st.metric("Testing Samples", X_test.shape[0])
-                    with col3:
-                        st.metric("Features", X_train.shape[1])
-                    with col4:
-                        st.metric("Classes", unique_classes)
+                X = df[features].copy()
+                y = df[target].copy()
+                
+                # Handle missing values
+                mask = y.notna()
+                X = X.loc[mask]
+                y = y.loc[mask]
+                
+                # Convert to numeric
+                X = X.apply(pd.to_numeric, errors='coerce')
+                X = X.fillna(X.median(numeric_only=True))
+                X = X.fillna(0)
+                
+                # Handle target variable
+                if y.dtype == 'object':
+                    le = LabelEncoder()
+                    y_encoded = le.fit_transform(y.astype(str))
+                    st.info(f"Target encoded: {len(le.classes_)} classes - {list(le.classes_)}")
+                elif y.nunique() < 10:
+                    y_encoded = pd.to_numeric(y, errors='coerce').fillna(0).astype(int).values
+                else:
+                    y_np = pd.to_numeric(y, errors='coerce').fillna(0).values
+                    try:
+                        y_encoded = pd.qcut(y_np, q=4, labels=False, duplicates='drop')
+                    except:
+                        percentiles = np.percentile(y_np[~np.isnan(y_np)], [25, 50, 75])
+                        y_encoded = np.digitize(y_np, percentiles)
+                
+                y_encoded = np.asarray(y_encoded, dtype=int).flatten()
+                
+                # Remove NaN
+                valid_y = ~np.isnan(y_encoded)
+                X = X.iloc[valid_y]
+                y_encoded = y_encoded[valid_y]
+                
+                # Drop NaN columns
+                X = X.dropna(axis=1, how='any')
+                
+                # Ensure matching lengths
+                min_len = min(len(X), len(y_encoded))
+                X = X.iloc[:min_len]
+                y_encoded = y_encoded[:min_len]
+                
+                # Train-test split
+                unique_classes = len(np.unique(y_encoded))
+                if unique_classes > 1 and all(np.bincount(y_encoded) >= 2):
+                    X_train, X_test, y_train, y_test = train_test_split(
+                        X, y_encoded, test_size=test_size, random_state=42, stratify=y_encoded
+                    )
+                else:
+                    X_train, X_test, y_train, y_test = train_test_split(
+                        X, y_encoded, test_size=test_size, random_state=42
+                    )
+                
+                st.success(f"✅ Data split: {X_train.shape[0]} training | {X_test.shape[0]} testing | {X_train.shape[1]} features")
+                
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("Training Samples", X_train.shape[0])
+                with col2:
+                    st.metric("Testing Samples", X_test.shape[0])
+                with col3:
+                    st.metric("Features", X_train.shape[1])
+                with col4:
+                    st.metric("Classes", unique_classes)
                 
                 st.divider()
                 
@@ -1976,7 +2024,6 @@ from sklearn.preprocessing import LabelEncoder
                 except Exception as e:
                     lr_progress.progress(100)
                     st.error(f"❌ Logistic Regression failed: {str(e)[:100]}")
-                    logistic_regression_model = None
                 
                 st.markdown("---")
                 
@@ -2002,7 +2049,6 @@ from sklearn.preprocessing import LabelEncoder
                 except Exception as e:
                     rf_progress.progress(100)
                     st.error(f"❌ Random Forest failed: {str(e)[:100]}")
-                    random_forest_model = None
                 
                 st.markdown("---")
                 
@@ -2026,7 +2072,6 @@ from sklearn.preprocessing import LabelEncoder
                 except Exception as e:
                     gb_progress.progress(100)
                     st.error(f"❌ Gradient Boosting failed: {str(e)[:100]}")
-                    gradient_boosting_model = None
                 
                 st.divider()
                 
@@ -2042,7 +2087,6 @@ from sklearn.preprocessing import LabelEncoder
                 else:
                     st.success(f"✅ {trained_count}/3 models trained successfully!")
                     
-                    # Model summary
                     summary_data = []
                     for name, model in models.items():
                         train_score = model.score(X_train, y_train)
@@ -2061,8 +2105,9 @@ from sklearn.preprocessing import LabelEncoder
                     st.session_state.trained = True
                     st.session_state.X_test = X_test
                     st.session_state.y_test = y_test
+                    st.session_state.X_train = X_train
+                    st.session_state.y_train = y_train
                     
-                    # Best model
                     best_idx = summary_df['Test Score'].idxmax()
                     best_model = summary_df.iloc[best_idx]['Model']
                     best_score = summary_df.iloc[best_idx]['Test Score']
