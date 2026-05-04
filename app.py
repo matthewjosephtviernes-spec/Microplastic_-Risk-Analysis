@@ -1412,6 +1412,37 @@ def main():
         
         st.divider()
         
+        # Target Summary Metrics
+        st.markdown("### Target Variable Summary")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        with col1: 
+            st.metric("Variable Type", "Categorical" if df[target].dtype == 'object' or df[target].nunique() < 10 else "Numerical")
+        with col2: 
+            st.metric("Unique Values", df[target].nunique())
+        with col3: 
+            st.metric("Missing Values", df[target].isnull().sum())
+        with col4: 
+            st.metric("Total Samples", len(df))
+        
+        # Target Distribution
+        st.divider()
+        st.markdown("### Target Distribution")
+        
+        if df[target].dtype == 'object' or df[target].nunique() < 10:
+            target_counts = df[target].value_counts()
+            fig = px.bar(x=target_counts.index.astype(str), y=target_counts.values,
+                        title=f'Distribution of {target}', color=target_counts.index.astype(str))
+            fig.update_layout(showlegend=False, height=400)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            clean_target = pd.to_numeric(df[target], errors='coerce').dropna()
+            if len(clean_target) > 0:
+                fig = plot_distribution(df, target, f'Distribution of {target}')
+                st.plotly_chart(fig, use_container_width=True)
+        
+        st.divider()
+        
         # Target Summary
         st.markdown(f"**Target Variable:** `{target}`")
         
