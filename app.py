@@ -1748,8 +1748,7 @@ from sklearn.preprocessing import LabelEncoder
                 except Exception as e:
                     st.error(f"❌ Feature selection error: {str(e)}")
                     st.info("Try selecting a different target variable or check your data for issues.")
-    # ==================== MODELING PAGE ====================
-    # ==================== MODELING PAGE ====================
+       # ==================== MODELING PAGE ====================
     elif section == "🤖 Modeling":
         st.markdown('<p class="section-header">🤖 Model Training</p>', unsafe_allow_html=True)
         
@@ -1761,7 +1760,7 @@ from sklearn.preprocessing import LabelEncoder
         df = data.copy()
         
         # =============================================================
-        # CONFIGURATION (Always visible)
+        # CONFIGURATION
         # =============================================================
         st.markdown("## ⚙️ Model Configuration")
         
@@ -1776,6 +1775,7 @@ from sklearn.preprocessing import LabelEncoder
         with col2:
             all_features = [c for c in df.columns if c != target]
             
+            # Use selected features from Feature Selection if available
             default_features = st.session_state.get('selected_features', None)
             if default_features is not None:
                 default_features = [f for f in default_features if f in all_features]
@@ -1783,329 +1783,292 @@ from sklearn.preprocessing import LabelEncoder
                 default_features = df.select_dtypes(include=['float64', 'int64']).columns.tolist()[:10]
                 default_features = [f for f in default_features if f in all_features and f != target]
             
-            features = st.multiselect("Features:", all_features, default=default_features, key="model_features")
+            features = st.multiselect(
+                "Select Features for Training:", 
+                all_features, 
+                default=default_features,
+                key="model_features"
+            )
         with col3:
             test_size = st.slider("Test Size:", 0.1, 0.5, 0.2, 0.05, key="model_test_size")
         
-        # Models info
-        st.markdown("**Models to train:** Logistic Regression | Random Forest | Gradient Boosting")
+        st.divider()
+        
+        # Show selected features
+        if features:
+            st.markdown(f"**Selected Features ({len(features)}):** {', '.join(features[:10])}{'...' if len(features) > 10 else ''}")
+        
+        st.markdown("### 🤖 Models to Train")
+        st.markdown("""
+        | Model | Type | Description |
+        |-------|------|-------------|
+        | Logistic Regression | Linear | Simple, interpretable baseline model |
+        | Random Forest | Ensemble | Robust tree-based ensemble method |
+        | Gradient Boosting | Ensemble | Sequential boosting for high accuracy |
+        """)
         
         st.divider()
         
         # =============================================================
-        # SINGLE BUTTON - Does everything
+        # TRAIN MODELS
         # =============================================================
         if len(features) == 0:
-            st.error("Please select at least one feature.")
+            st.warning("⚠️ Please select at least one feature for training.")
         else:
-            if st.button("🚀 Train & Evaluate Models", type="primary", use_container_width=True, key="run_all"):
+            if st.button("🚀 Train Models", type="primary", use_container_width=True, key="train_models_btn"):
                 
-                # ── Data Preparation ──
+                # ============================================
+                # Step 1: Import Libraries (shown for clarity)
+                # ============================================
+                st.markdown("### 📚 Step 1: Import Classification Model Classes")
+                st.code("""
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+                """, language='python')
+                st.success("✅ Libraries imported successfully!")
+                
+                st.divider()
+                
+                # ============================================
+                # Step 2: Prepare Training and Testing Data
+                # ============================================
+                st.markdown("### 📊 Step 2: Prepare Training and Testing Data")
+                
                 with st.spinner('Preparing data...'):
-                    X_selected = df[features].copy()
+                    X = df[features].copy()
                     y = df[target].copy()
                     
+                    # Handle missing values
                     mask = y.notna()
-                    X_selected = X_selected[mask]
+                    X = X[mask]
                     y = y[mask]
                     
+                    # Convert to numeric
+                    X = X.apply(pd.to_numeric, errors='coerce')
+                    X = X.fillna(X.median())
+                    
+                    # Handle target variable
                     if y.dtype == 'object':
                         le = LabelEncoder()
-                        y = le.fit_transform(y)
+                        y = le.fit_transform(y.astype(str))
+                        st.info(f"Target encoded: {len(le.classes_)} classes - {list(le.classes_)}")
+                    elif y.nunique() < 10:
+                        y = pd.to_numeric(y, errors='coerce').fillna(0).astype(int).values
+                    else:
+                        y_np = pd.to_numeric(y, errors='coerce').fillna(y.median()).values
+                        try:
+                            y = pd.qcut(y_np, q=4, labels=False, duplicates='drop')
+                        except:
+                            percentiles = np.percentile(y_np[~np.isnan(y_np)], [25, 50, 75])
+                            y = np.digitize(y_np, percentiles)
                     
-                    # FIX: Force all features to numeric
-                    X_selected = X_selected.apply(pd.to_numeric, errors='coerce')
-                    X_selected = X_selected.fillna(X_selected.median())
+                    y = np.asarray(y, dtype=int).flatten()
                     
-                    # Remove any columns that are all NaN
-                    X_selected = X_selected.dropna(axis=1, how='all')
+                    # Remove NaN columns
+                    X = X.dropna(axis=1, how='any')
                     
-                    if X_selected.shape[1] == 0:
-                        st.error("No valid numerical features remaining after cleaning. Please select numerical features.")
-                        st.stop()
+                    # Ensure matching lengths
+                    min_len = min(len(X), len(y))
+                    X = X.iloc[:min_len]
+                    y = y[:min_len]
                     
-                    # Split with stratification check
-                    unique, counts = np.unique(y, return_counts=True)
-                    stratify_param = y if (len(unique) > 1 and all(c >= 2 for c in counts)) else None
-                    
+                    # Train-test split
                     X_train, X_test, y_train, y_test = train_test_split(
-                        X_selected, y, test_size=test_size, random_state=42, stratify=stratify_param
+                        X, y, test_size=test_size, random_state=42, stratify=y if len(np.unique(y)) > 1 else None
                     )
-                
-                st.success("✅ Data prepared: " + str(X_train.shape[0]) + " train | " + str(X_test.shape[0]) + " test | " + str(X_train.shape[1]) + " features")
-                
-                st.divider()
-                
-                # ── Train Models ──
-                st.markdown("### 🤖 Training Models")
-                
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    st.markdown("**Logistic Regression**")
-                    lr_progress = st.progress(0)
-                    try:
-                        logistic_regression_model = LogisticRegression(random_state=42, max_iter=1000)
-                        logistic_regression_model.fit(X_train, y_train)
-                        lr_progress.progress(100)
-                        st.success("✅ Trained")
-                    except Exception as e:
-                        lr_progress.progress(100)
-                        st.error("Failed: " + str(e)[:50])
-                        logistic_regression_model = None
-                
-                with col2:
-                    st.markdown("**Random Forest**")
-                    rf_progress = st.progress(0)
-                    try:
-                        random_forest_model = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
-                        random_forest_model.fit(X_train, y_train)
-                        rf_progress.progress(100)
-                        st.success("✅ Trained")
-                    except Exception as e:
-                        rf_progress.progress(100)
-                        st.error("Failed: " + str(e)[:50])
-                        random_forest_model = None
-                
-                with col3:
-                    st.markdown("**Gradient Boosting**")
-                    gb_progress = st.progress(0)
-                    try:
-                        gradient_boosting_model = GradientBoostingClassifier(n_estimators=100, random_state=42)
-                        gradient_boosting_model.fit(X_train, y_train)
-                        gb_progress.progress(100)
-                        st.success("✅ Trained")
-                    except Exception as e:
-                        gb_progress.progress(100)
-                        st.error("Failed: " + str(e)[:50])
-                        gradient_boosting_model = None
-                
-                # Check if any model trained successfully
-                trained_models = sum([
-                    logistic_regression_model is not None,
-                    random_forest_model is not None,
-                    gradient_boosting_model is not None
-                ])
-                
-                if trained_models == 0:
-                    st.error("No models could be trained. Please check your feature selection.")
-                    st.stop()
-                
-                st.divider()
-                
-                # ── Evaluate Models ──
-                st.markdown("### 📊 Model Evaluation")
-                
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    if logistic_regression_model is not None:
-                        lr_pred = logistic_regression_model.predict(X_test)
-                        lr_acc = accuracy_score(y_test, lr_pred)
-                        lr_prec = precision_score(y_test, lr_pred, average='weighted')
-                        lr_rec = recall_score(y_test, lr_pred, average='weighted')
-                        lr_f1 = f1_score(y_test, lr_pred, average='weighted')
-                        
-                        st.markdown("**--- Logistic Regression ---**")
-                        st.code(
-                            "Accuracy:  " + str(round(lr_acc, 4)) + "\n" +
-                            "Precision: " + str(round(lr_prec, 4)) + "\n" +
-                            "Recall:    " + str(round(lr_rec, 4)) + "\n" +
-                            "F1-Score:  " + str(round(lr_f1, 4))
-                        )
-                    else:
-                        st.markdown("**--- Logistic Regression ---**")
-                        st.warning("Not trained")
-                        lr_acc = lr_prec = lr_rec = lr_f1 = 0
-                
-                with col2:
-                    if random_forest_model is not None:
-                        rf_pred = random_forest_model.predict(X_test)
-                        rf_acc = accuracy_score(y_test, rf_pred)
-                        rf_prec = precision_score(y_test, rf_pred, average='weighted')
-                        rf_rec = recall_score(y_test, rf_pred, average='weighted')
-                        rf_f1 = f1_score(y_test, rf_pred, average='weighted')
-                        
-                        st.markdown("**--- Random Forest ---**")
-                        st.code(
-                            "Accuracy:  " + str(round(rf_acc, 4)) + "\n" +
-                            "Precision: " + str(round(rf_prec, 4)) + "\n" +
-                            "Recall:    " + str(round(rf_rec, 4)) + "\n" +
-                            "F1-Score:  " + str(round(rf_f1, 4))
-                        )
-                    else:
-                        st.markdown("**--- Random Forest ---**")
-                        st.warning("Not trained")
-                        rf_acc = rf_prec = rf_rec = rf_f1 = 0
-                
-                with col3:
-                    if gradient_boosting_model is not None:
-                        gb_pred = gradient_boosting_model.predict(X_test)
-                        gb_acc = accuracy_score(y_test, gb_pred)
-                        gb_prec = precision_score(y_test, gb_pred, average='weighted')
-                        gb_rec = recall_score(y_test, gb_pred, average='weighted')
-                        gb_f1 = f1_score(y_test, gb_pred, average='weighted')
-                        
-                        st.markdown("**--- Gradient Boosting ---**")
-                        st.code(
-                            "Accuracy:  " + str(round(gb_acc, 4)) + "\n" +
-                            "Precision: " + str(round(gb_prec, 4)) + "\n" +
-                            "Recall:    " + str(round(gb_rec, 4)) + "\n" +
-                            "F1-Score:  " + str(round(gb_f1, 4))
-                        )
-                    else:
-                        st.markdown("**--- Gradient Boosting ---**")
-                        st.warning("Not trained")
-                        gb_acc = gb_prec = gb_rec = gb_f1 = 0
-                
-                st.divider()
-                
-                # ── Comparison Table ──
-                st.markdown("### 📊 Model Performance Comparison")
-                
-                performance_data = []
-                if logistic_regression_model is not None:
-                    performance_data.append({
-                        'Model': 'Logistic Regression',
-                        'Accuracy': round(lr_acc, 4), 'Precision': round(lr_prec, 4),
-                        'Recall': round(lr_rec, 4), 'F1-Score': round(lr_f1, 4)
-                    })
-                if random_forest_model is not None:
-                    performance_data.append({
-                        'Model': 'Random Forest',
-                        'Accuracy': round(rf_acc, 4), 'Precision': round(rf_prec, 4),
-                        'Recall': round(rf_rec, 4), 'F1-Score': round(rf_f1, 4)
-                    })
-                if gradient_boosting_model is not None:
-                    performance_data.append({
-                        'Model': 'Gradient Boosting',
-                        'Accuracy': round(gb_acc, 4), 'Precision': round(gb_prec, 4),
-                        'Recall': round(gb_rec, 4), 'F1-Score': round(gb_f1, 4)
-                    })
-                
-                performance_df = pd.DataFrame(performance_data)
-                st.dataframe(performance_df, use_container_width=True, hide_index=True)
-                
-                # Best model
-                if len(performance_df) > 0:
-                    best_idx = performance_df['F1-Score'].idxmax()
-                    best_name = performance_df.iloc[best_idx]['Model']
-                    best_f1 = performance_df.iloc[best_idx]['F1-Score']
                     
-                    st.success("🏆 **Best Model: " + best_name + "** (F1-Score: " + str(best_f1) + ")")
-                
-                st.divider()
-                
-                # ── Charts ──
-                if len(performance_df) > 0:
-                    col1, col2 = st.columns(2)
+                    st.success(f"✅ Data split: {X_train.shape[0]} training | {X_test.shape[0]} testing | {X_train.shape[1]} features")
                     
+                    # Show data shapes
+                    col1, col2, col3, col4 = st.columns(4)
                     with col1:
-                        st.markdown("### 📊 Bar Chart Comparison")
-                        fig = px.bar(
-                            performance_df.melt(id_vars='Model', var_name='Metric', value_name='Score'),
-                            x='Model', y='Score', color='Metric',
-                            barmode='group', height=350,
-                            color_discrete_sequence=px.colors.qualitative.Set2
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
-                    
+                        st.metric("Training Samples", X_train.shape[0])
                     with col2:
-                        st.markdown("### 🎯 Radar Chart")
-                        categories = ['Accuracy', 'Precision', 'Recall', 'F1-Score']
-                        fig = go.Figure()
-                        
-                        if logistic_regression_model is not None:
-                            fig.add_trace(go.Scatterpolar(
-                                r=[lr_acc, lr_prec, lr_rec, lr_f1], theta=categories,
-                                fill='toself', name='Logistic Regression'
-                            ))
-                        if random_forest_model is not None:
-                            fig.add_trace(go.Scatterpolar(
-                                r=[rf_acc, rf_prec, rf_rec, rf_f1], theta=categories,
-                                fill='toself', name='Random Forest'
-                            ))
-                        if gradient_boosting_model is not None:
-                            fig.add_trace(go.Scatterpolar(
-                                r=[gb_acc, gb_prec, gb_rec, gb_f1], theta=categories,
-                                fill='toself', name='Gradient Boosting'
-                            ))
-                        
-                        fig.update_layout(polar=dict(radialaxis=dict(range=[0.9, 1.0])), height=350)
-                        st.plotly_chart(fig, use_container_width=True)
-                
-                st.divider()
-                
-                # ── Feature Importance & Confusion Matrix ──
-                if len(performance_df) > 0:
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        if random_forest_model is not None:
-                            st.markdown("### 🌲 Feature Importance (Random Forest)")
-                            importances = random_forest_model.feature_importances_
-                            feat_imp = pd.DataFrame({
-                                'Feature': features[:len(importances)],
-                                'Importance': importances
-                            }).sort_values('Importance', ascending=False).head(10)
-                            
-                            fig = px.bar(feat_imp, x='Feature', y='Importance',
-                                       color='Importance', color_continuous_scale='Greens', height=350)
-                            fig.update_layout(xaxis_tickangle=-45)
-                            st.plotly_chart(fig, use_container_width=True)
-                        else:
-                            st.markdown("### 🌲 Feature Importance")
-                            st.warning("Random Forest not trained")
-                    
-                    with col2:
-                        st.markdown("### 🔍 Confusion Matrix (" + best_name + ")")
-                        if best_name == 'Logistic Regression' and logistic_regression_model is not None:
-                            best_pred = lr_pred
-                        elif best_name == 'Random Forest' and random_forest_model is not None:
-                            best_pred = rf_pred
-                        elif best_name == 'Gradient Boosting' and gradient_boosting_model is not None:
-                            best_pred = gb_pred
-                        else:
-                            best_pred = None
-                        
-                        if best_pred is not None:
-                            cm = confusion_matrix(y_test, best_pred)
-                            fig = px.imshow(cm, text_auto=True, color_continuous_scale='Blues', height=350)
-                            st.plotly_chart(fig, use_container_width=True)
-                        else:
-                            st.warning("No predictions available")
-                
-                st.divider()
-                
-                # ── Classification Report ──
-                if best_pred is not None:
-                    with st.expander("📋 View Classification Report"):
-                        report_text = classification_report(y_test, best_pred)
-                        st.code(report_text, language='text')
-                
-                # Store in session
-                models_dict = {}
-                if logistic_regression_model is not None:
-                    models_dict['Logistic Regression'] = logistic_regression_model
-                if random_forest_model is not None:
-                    models_dict['Random Forest'] = random_forest_model
-                if gradient_boosting_model is not None:
-                    models_dict['Gradient Boosting'] = gradient_boosting_model
-                
-                st.session_state.models = models_dict
-                st.session_state.trained = True
-                
-                # Download
-                if len(performance_df) > 0:
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.download_button("📥 Results CSV", performance_df.to_csv(index=False), "results.csv", "text/csv")
-                    with col2:
-                        if random_forest_model is not None:
-                            st.download_button("📥 Feature Importance", feat_imp.to_csv(index=False), "features.csv", "text/csv")
+                        st.metric("Testing Samples", X_test.shape[0])
                     with col3:
-                        if best_pred is not None:
-                            st.download_button("📥 Report", report_text, "report.txt", "text/plain")
+                        st.metric("Features", X_train.shape[1])
+                    with col4:
+                        st.metric("Classes", len(np.unique(y)))
+                
+                st.divider()
+                
+                # ============================================
+                # Step 3: Instantiate and Train Models
+                # ============================================
+                st.markdown("### 🤖 Step 3: Instantiate and Train the Models")
+                
+                models = {}
+                
+                # --- Logistic Regression ---
+                st.markdown("#### Training Logistic Regression Model...")
+                lr_progress = st.progress(0)
+                
+                try:
+                    from sklearn.linear_model import LogisticRegression
+                    
+                    # Instantiate
+                    logistic_regression_model = LogisticRegression(
+                        random_state=42, 
+                        max_iter=1000,
+                        class_weight='balanced'
+                    )
+                    lr_progress.progress(25)
+                    st.markdown("- ✅ Logistic Regression model instantiated")
+                    
+                    # Train
+                    logistic_regression_model.fit(X_train, y_train)
+                    lr_progress.progress(100)
+                    models['Logistic Regression'] = logistic_regression_model
+                    st.success("✅ Logistic Regression Model Training Complete.")
+                    
+                except Exception as e:
+                    lr_progress.progress(100)
+                    st.error(f"❌ Logistic Regression failed: {str(e)[:100]}")
+                    logistic_regression_model = None
+                
+                st.markdown("---")
+                
+                # --- Random Forest ---
+                st.markdown("#### Training RandomForestClassifier Model...")
+                rf_progress = st.progress(0)
+                
+                try:
+                    from sklearn.ensemble import RandomForestClassifier
+                    
+                    # Instantiate
+                    random_forest_model = RandomForestClassifier(
+                        n_estimators=100,
+                        random_state=42,
+                        class_weight='balanced',
+                        n_jobs=-1
+                    )
+                    rf_progress.progress(25)
+                    st.markdown("- ✅ RandomForestClassifier model instantiated")
+                    
+                    # Train
+                    random_forest_model.fit(X_train, y_train)
+                    rf_progress.progress(100)
+                    models['Random Forest'] = random_forest_model
+                    st.success("✅ RandomForestClassifier Model Training Complete.")
+                    
+                except Exception as e:
+                    rf_progress.progress(100)
+                    st.error(f"❌ Random Forest failed: {str(e)[:100]}")
+                    random_forest_model = None
+                
+                st.markdown("---")
+                
+                # --- Gradient Boosting ---
+                st.markdown("#### Training GradientBoostingClassifier Model...")
+                gb_progress = st.progress(0)
+                
+                try:
+                    from sklearn.ensemble import GradientBoostingClassifier
+                    
+                    # Instantiate
+                    gradient_boosting_model = GradientBoostingClassifier(
+                        n_estimators=100,
+                        random_state=42
+                    )
+                    gb_progress.progress(25)
+                    st.markdown("- ✅ GradientBoostingClassifier model instantiated")
+                    
+                    # Train
+                    gradient_boosting_model.fit(X_train, y_train)
+                    gb_progress.progress(100)
+                    models['Gradient Boosting'] = gradient_boosting_model
+                    st.success("✅ GradientBoostingClassifier Model Training Complete.")
+                    
+                except Exception as e:
+                    gb_progress.progress(100)
+                    st.error(f"❌ Gradient Boosting failed: {str(e)[:100]}")
+                    gradient_boosting_model = None
+                
+                st.divider()
+                
+                # ============================================
+                # Step 4: Training Summary
+                # ============================================
+                st.markdown("### 📊 Training Summary")
+                
+                trained_count = len(models)
+                
+                if trained_count == 0:
+                    st.error("❌ No models were trained successfully.")
+                else:
+                    st.success(f"✅ {trained_count}/3 models trained successfully!")
+                    
+                    # Model summary table
+                    summary_data = []
+                    for name, model in models.items():
+                        train_score = model.score(X_train, y_train)
+                        test_score = model.score(X_test, y_test)
+                        summary_data.append({
+                            'Model': name,
+                            'Train Score': round(train_score, 4),
+                            'Test Score': round(test_score, 4),
+                            'Parameters': str(model.get_params()).count(',') + 1
+                        })
+                    
+                    summary_df = pd.DataFrame(summary_data)
+                    st.dataframe(summary_df, use_container_width=True, hide_index=True)
+                    
+                    # Store in session
+                    st.session_state.models = models
+                    st.session_state.trained = True
+                    st.session_state.X_test = X_test
+                    st.session_state.y_test = y_test
+                    
+                    # Show best model
+                    if len(summary_df) > 0:
+                        best_idx = summary_df['Test Score'].idxmax()
+                        best_model = summary_df.iloc[best_idx]['Model']
+                        best_score = summary_df.iloc[best_idx]['Test Score']
+                        st.success(f"🏆 **Best Model: {best_model}** (Test Score: {best_score})")
+                
+                st.divider()
+                
+                # ============================================
+                # Step 5: Model Evaluation
+                # ============================================
+                if trained_count > 0:
+                    st.markdown("### 📈 Model Evaluation on Test Set")
+                    
+                    eval_data = []
+                    for name, model in models.items():
+                        y_pred = model.predict(X_test)
+                        eval_data.append({
+                            'Model': name,
+                            'Accuracy': round(accuracy_score(y_test, y_pred), 4),
+                            'Precision': round(precision_score(y_test, y_pred, average='weighted', zero_division=0), 4),
+                            'Recall': round(recall_score(y_test, y_pred, average='weighted', zero_division=0), 4),
+                            'F1 Score': round(f1_score(y_test, y_pred, average='weighted', zero_division=0), 4)
+                        })
+                    
+                    eval_df = pd.DataFrame(eval_data)
+                    st.dataframe(eval_df, use_container_width=True, hide_index=True)
+                    
+                    # Bar chart comparison
+                    fig = px.bar(
+                        eval_df.melt(id_vars='Model', var_name='Metric', value_name='Score'),
+                        x='Model', y='Score', color='Metric',
+                        barmode='group', height=400,
+                        title='Model Performance Comparison',
+                        color_discrete_sequence=px.colors.qualitative.Set2
+                    )
+                    st.plotly_chart(fig, use_container_width=True, key="model_eval_chart")
+                    
+                    # Download results
+                    csv_results = eval_df.to_csv(index=False)
+                    st.download_button(
+                        "📥 Download Evaluation Results",
+                        csv_results,
+                        "model_evaluation_results.csv",
+                        "text/csv",
+                        key="model_download"
+                    )
     # ==================== CROSS VALIDATION & EVALUATION PAGE ====================
     # ==================== CROSS VALIDATION & EVALUATION PAGE ====================
     elif section == "📊 Cross Validation & Evaluation":
