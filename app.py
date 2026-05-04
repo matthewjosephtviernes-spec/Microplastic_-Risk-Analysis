@@ -1358,15 +1358,57 @@ def main():
         # STEP 1: Understand the Goal
         # ─────────────────────────────────────────────────────────────
         st.markdown("## 🎯 Step 1: Understand the Goal")
-        st.markdown("Clarify the target variable for classification/prediction and the type of model you intend to build.")
+        st.markdown("Clarify the target variable for classification/prediction.")
         
         col1, col2 = st.columns(2)
         with col1:
             default_idx = df.columns.tolist().index('Risk_Type') if 'Risk_Type' in df.columns else 0
             target = st.selectbox("Select Target Variable:", df.columns.tolist(), index=default_idx)
         with col2:
-            model_type = st.selectbox("Select Model Type:", ["Classification", "Regression"],
-                                     index=0 if df[target].dtype == 'object' or df[target].nunique() < 10 else 1)
+            # Display target summary info
+            if df[target].dtype == 'object' or df[target].nunique() < 10:
+                st.info(f"""
+                **Target Type:** Categorical  
+                **Unique Values:** {df[target].nunique()}  
+                **Categories:** {', '.join(df[target].dropna().unique().astype(str)[:5])}
+                """)
+            else:
+                st.info(f"""
+                **Target Type:** Numerical  
+                **Unique Values:** {df[target].nunique()}  
+                **Missing Values:** {df[target].isnull().sum()}
+                """)
+        
+        st.divider()
+        
+        # Target Summary Metrics
+        st.markdown("### Target Variable Summary")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        with col1: 
+            st.metric("Variable Type", "Categorical" if df[target].dtype == 'object' or df[target].nunique() < 10 else "Numerical")
+        with col2: 
+            st.metric("Unique Values", df[target].nunique())
+        with col3: 
+            st.metric("Missing Values", df[target].isnull().sum())
+        with col4: 
+            st.metric("Total Samples", len(df))
+        
+        # Target Distribution
+        st.divider()
+        st.markdown("### Target Distribution")
+        
+        if df[target].dtype == 'object' or df[target].nunique() < 10:
+            target_counts = df[target].value_counts()
+            fig = px.bar(x=target_counts.index.astype(str), y=target_counts.values,
+                        title=f'Distribution of {target}', color=target_counts.index.astype(str))
+            fig.update_layout(showlegend=False, height=400)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            clean_target = pd.to_numeric(df[target], errors='coerce').dropna()
+            if len(clean_target) > 0:
+                fig = plot_distribution(df, target, f'Distribution of {target}')
+                st.plotly_chart(fig, use_container_width=True)
         
         st.divider()
         
