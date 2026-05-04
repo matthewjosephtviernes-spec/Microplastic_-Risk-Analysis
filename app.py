@@ -1343,7 +1343,6 @@ def main():
                 st.info("No preprocessing steps applied yet.")
     
     # ==================== FEATURE SELECTION PAGE ====================
-    # ==================== FEATURE SELECTION PAGE ====================
     elif section == "🛠️ Feature Selection & Relevance":
         st.markdown('<p class="section-header">🛠️ Feature Selection & Relevance</p>', unsafe_allow_html=True)
         
@@ -1363,9 +1362,8 @@ def main():
         col1, col2 = st.columns(2)
         with col1:
             default_idx = df.columns.tolist().index('Risk_Type') if 'Risk_Type' in df.columns else 0
-            target = st.selectbox("Select Target Variable:", df.columns.tolist(), index=default_idx)
+            target = st.selectbox("Select Target Variable:", df.columns.tolist(), index=default_idx, key="fs_target")
         with col2:
-            # Display target summary info
             if df[target].dtype == 'object' or df[target].nunique() < 10:
                 st.info(f"""
                 **Target Type:** Categorical  
@@ -1382,8 +1380,6 @@ def main():
         st.divider()
         
         # Target Summary Metrics
-        st.markdown("### Target Variable Summary")
-        
         col1, col2, col3, col4 = st.columns(4)
         with col1: 
             st.metric("Variable Type", "Categorical" if df[target].dtype == 'object' or df[target].nunique() < 10 else "Numerical")
@@ -1403,79 +1399,12 @@ def main():
             fig = px.bar(x=target_counts.index.astype(str), y=target_counts.values,
                         title=f'Distribution of {target}', color=target_counts.index.astype(str))
             fig.update_layout(showlegend=False, height=400)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key=f"fs_target_dist_{target}")
         else:
             clean_target = pd.to_numeric(df[target], errors='coerce').dropna()
             if len(clean_target) > 0:
                 fig = plot_distribution(df, target, f'Distribution of {target}')
-                st.plotly_chart(fig, use_container_width=True)
-        
-        st.divider()
-        
-        # Target Summary Metrics
-        st.markdown("### Target Variable Summary")
-        
-        col1, col2, col3, col4 = st.columns(4)
-        with col1: 
-            st.metric("Variable Type", "Categorical" if df[target].dtype == 'object' or df[target].nunique() < 10 else "Numerical")
-        with col2: 
-            st.metric("Unique Values", df[target].nunique())
-        with col3: 
-            st.metric("Missing Values", df[target].isnull().sum())
-        with col4: 
-            st.metric("Total Samples", len(df))
-        
-        # Target Distribution
-        st.divider()
-        st.markdown("### Target Distribution")
-        
-        if df[target].dtype == 'object' or df[target].nunique() < 10:
-            target_counts = df[target].value_counts()
-            fig = px.bar(x=target_counts.index.astype(str), y=target_counts.values,
-                        title=f'Distribution of {target}', color=target_counts.index.astype(str))
-            fig.update_layout(showlegend=False, height=400)
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            clean_target = pd.to_numeric(df[target], errors='coerce').dropna()
-            if len(clean_target) > 0:
-                fig = plot_distribution(df, target, f'Distribution of {target}')
-                st.plotly_chart(fig, use_container_width=True)
-        
-        st.divider()
-        
-        # Target Summary
-        st.markdown(f"**Target Variable:** `{target}`")
-        
-        if df[target].dtype == 'object' or df[target].nunique() < 10:
-            st.markdown(f"**Type:** Categorical ({df[target].nunique()} unique values)")
-            st.markdown(f"**Categories:** {', '.join(df[target].dropna().unique().astype(str))}")
-            st.markdown(f"**Model Type:** Classification")
-        else:
-            st.markdown(f"**Type:** Numerical")
-            try:
-                clean_target = pd.to_numeric(df[target], errors='coerce').dropna()
-                if len(clean_target) > 0:
-                    st.markdown(f"**Range:** {clean_target.min():.4f} to {clean_target.max():.4f}")
-            except:
-                pass
-            st.markdown(f"**Model Type:** {model_type}")
-        
-        st.divider()
-        
-        # Target Distribution
-        st.markdown("### Target Distribution")
-        
-        if df[target].dtype == 'object' or df[target].nunique() < 10:
-            target_counts = df[target].value_counts()
-            fig = px.bar(x=target_counts.index.astype(str), y=target_counts.values,
-                        title=f'Distribution of {target}', color=target_counts.index.astype(str))
-            fig.update_layout(showlegend=False, height=400)
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            clean_target = pd.to_numeric(df[target], errors='coerce').dropna()
-            if len(clean_target) > 0:
-                fig = plot_distribution(df, target, f'Distribution of {target}')
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, key=f"fs_target_dist_num_{target}")
         
         st.divider()
         
@@ -1483,42 +1412,34 @@ def main():
         # STEP 2: Explore Feature Selection Methods
         # ─────────────────────────────────────────────────────────────
         st.markdown("## 📚 Step 2: Explore Feature Selection Methods")
-        st.markdown("Discuss and select appropriate feature selection or ranking methods based on the data type and the goal.")
+        st.markdown("Discuss and select appropriate feature selection methods based on data type and goal.")
         
-        # Method tabs
         tab1, tab2, tab3, tab4, tab5 = st.tabs([
             "📋 Overview", "🔍 Filter Methods", "🔄 Wrapper Methods", "🌲 Embedded Methods", "✅ Selection"
         ])
         
-        # ── TAB 1: Overview ──
         with tab1:
             st.markdown("### Feature Selection Methods Overview")
             st.markdown("""
             **1. Filter Methods** - Rank features based on statistical scores, fast and model-independent
-            
             **2. Wrapper Methods** - Evaluate feature subsets using model performance, more accurate but expensive
-            
             **3. Embedded Methods** - Feature selection built into model training, balance of speed and accuracy
             """)
         
-        # ── TAB 2: Filter Methods ──
         with tab2:
             st.markdown("### 🔍 Filter Methods - Selected")
             st.success("✅ **Mutual Information & Chi-Squared**")
             st.markdown("Well-suited for mixed data types and interpretability. Fast for initial screening.")
         
-        # ── TAB 3: Wrapper Methods ──
         with tab3:
             st.markdown("### 🔄 Wrapper Methods")
             st.warning("⚠️ **Not selected** due to computational cost with many features after encoding.")
         
-        # ── TAB 4: Embedded Methods ──
         with tab4:
             st.markdown("### 🌲 Embedded Methods - Selected")
             st.success("✅ **Random Forest & Gradient Boosting Importance**")
             st.markdown("Reliable feature importance for classification tasks. Captures non-linear relationships.")
         
-        # ── TAB 5: Final Selection ──
         with tab5:
             st.markdown("### ✅ Final Decision")
             st.markdown("""
@@ -1537,7 +1458,8 @@ def main():
         if 'Risk_Score' in df.columns:
             clean = df['Risk_Score'].dropna()
             if len(clean) > 0: 
-                st.plotly_chart(plot_distribution(df, 'Risk_Score', 'Risk Score Distribution'), use_container_width=True)
+                fig = plot_distribution(df, 'Risk_Score', 'Risk Score Distribution')
+                st.plotly_chart(fig, use_container_width=True, key="fs_eda_risk_dist")
         
         if 'MP_Count_per_L' in df.columns and 'Risk_Score' in df.columns:
             clean = df.dropna(subset=['MP_Count_per_L', 'Risk_Score'])
@@ -1548,14 +1470,15 @@ def main():
                                    trendline='ols', title='MP Count vs Risk Score')
                 except: 
                     fig = px.scatter(clean, x='MP_Count_per_L', y='Risk_Score', title='MP Count vs Risk Score')
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, key="fs_eda_mp_risk")
         
         if 'Risk_Level' in df.columns and 'Risk_Score' in df.columns:
             clean = df.dropna(subset=['Risk_Score'])
             clean['Risk_Level'] = clean['Risk_Level'].astype(str)
             if len(clean) > 0: 
-                st.plotly_chart(px.box(clean, x='Risk_Level', y='Risk_Score', color='Risk_Level', 
-                                      title='Risk Score by Risk Level'), use_container_width=True)
+                fig = px.box(clean, x='Risk_Level', y='Risk_Score', color='Risk_Level', 
+                                      title='Risk Score by Risk Level', points='outliers')
+                st.plotly_chart(fig, use_container_width=True, key="fs_eda_risk_level_box")
         
         st.divider()
         
@@ -1574,7 +1497,7 @@ def main():
         nums = df.select_dtypes(include=['float64', 'int64', 'int32']).columns.tolist()
         if target in nums: nums.remove(target)
         
-        if st.button("🚀 Calculate Feature Importance", type="primary", use_container_width=True):
+        if st.button("🚀 Calculate Feature Importance", type="primary", use_container_width=True, key="fs_calc_btn"):
             with st.spinner('Calculating feature importance with 4 methods...'):
                 X = df[nums].copy()
                 y = df[target].copy()
@@ -1609,6 +1532,10 @@ def main():
                 
                 # Store for modeling
                 st.session_state.selected_features = rf_series.head(10).index.tolist()
+                st.session_state.feature_importance = rf_series
+                st.session_state.mutual_info = mi_series
+                st.session_state.chi2_scores = chi2_series
+                st.session_state.gb_importance = gb_series
                 
                 # Display results in tabs
                 ft1, ft2, ft3, ft4 = st.tabs([
@@ -1620,37 +1547,42 @@ def main():
                 
                 with ft1:
                     st.markdown("**Top 20 features based on Mutual Information:**")
-                    st.dataframe(mi_series.head(20).reset_index().rename(columns={'index': 'Feature', 0: 'Score'}), 
-                                use_container_width=True, hide_index=True)
-                    fig = px.bar(x=mi_series.head(15).index, y=mi_series.head(15).values,
-                               title='Top 15 - Mutual Information', labels={'x': 'Feature', 'y': 'Score'})
-                    st.plotly_chart(fig, use_container_width=True)
+                    mi_df = mi_series.head(20).reset_index()
+                    mi_df.columns = ['Feature', 'Score']
+                    st.dataframe(mi_df, use_container_width=True, hide_index=True)
+                    fig = px.bar(mi_df.head(15), x='Feature', y='Score',
+                               title='Top 15 - Mutual Information')
+                    st.plotly_chart(fig, use_container_width=True, key="fs_mi_chart")
                 
                 with ft2:
                     st.markdown("**Top 20 features based on Chi-squared Test:**")
-                    st.dataframe(chi2_series.head(20).reset_index().rename(columns={'index': 'Feature', 0: 'Score'}), 
-                                use_container_width=True, hide_index=True)
-                    fig = px.bar(x=chi2_series.head(15).index, y=chi2_series.head(15).values,
-                               title='Top 15 - Chi-Squared', labels={'x': 'Feature', 'y': 'Score'})
-                    st.plotly_chart(fig, use_container_width=True)
+                    chi2_df = chi2_series.head(20).reset_index()
+                    chi2_df.columns = ['Feature', 'Score']
+                    st.dataframe(chi2_df, use_container_width=True, hide_index=True)
+                    fig = px.bar(chi2_df.head(15), x='Feature', y='Score',
+                               title='Top 15 - Chi-Squared')
+                    st.plotly_chart(fig, use_container_width=True, key="fs_chi2_chart")
                 
                 with ft3:
                     st.markdown("**Top 20 features based on Random Forest:**")
-                    st.dataframe(rf_series.head(20).reset_index().rename(columns={'index': 'Feature', 0: 'Importance'}), 
-                                use_container_width=True, hide_index=True)
-                    fig = px.bar(x=rf_series.head(15).index, y=rf_series.head(15).values,
-                               title='Top 15 - Random Forest', labels={'x': 'Feature', 'y': 'Importance'})
-                    st.plotly_chart(fig, use_container_width=True)
+                    rf_df = rf_series.head(20).reset_index()
+                    rf_df.columns = ['Feature', 'Importance']
+                    st.dataframe(rf_df, use_container_width=True, hide_index=True)
+                    fig = px.bar(rf_df.head(15), x='Feature', y='Importance',
+                               title='Top 15 - Random Forest')
+                    st.plotly_chart(fig, use_container_width=True, key="fs_rf_chart")
                 
                 with ft4:
                     st.markdown("**Top 20 features based on Gradient Boosting:**")
-                    st.dataframe(gb_series.head(20).reset_index().rename(columns={'index': 'Feature', 0: 'Importance'}), 
-                                use_container_width=True, hide_index=True)
-                    fig = px.bar(x=gb_series.head(15).index, y=gb_series.head(15).values,
-                               title='Top 15 - Gradient Boosting', labels={'x': 'Feature', 'y': 'Importance'})
-                    st.plotly_chart(fig, use_container_width=True)
+                    gb_df = gb_series.head(20).reset_index()
+                    gb_df.columns = ['Feature', 'Importance']
+                    st.dataframe(gb_df, use_container_width=True, hide_index=True)
+                    fig = px.bar(gb_df.head(15), x='Feature', y='Importance',
+                               title='Top 15 - Gradient Boosting')
+                    st.plotly_chart(fig, use_container_width=True, key="fs_gb_chart")
                 
                 st.success(f"✅ Feature selection completed! Top 10 features stored for modeling.")
+                st.info(f"**Selected Features:** {', '.join(st.session_state.selected_features[:10])}")
     # ==================== MODELING PAGE ====================
     # ==================== MODELING PAGE ====================
     elif section == "🤖 Modeling":
