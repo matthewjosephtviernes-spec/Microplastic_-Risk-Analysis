@@ -15,12 +15,14 @@ import seaborn as sns
 from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score, StratifiedKFold
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler
 from sklearn.linear_model import LogisticRegression, LinearRegression
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, StackingClassifier
+from xgboost import XGBClassifier
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler, PolynomialFeatures, LabelEncoder
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.metrics import (accuracy_score, precision_score, recall_score, f1_score, 
                              confusion_matrix, classification_report, r2_score)
 from sklearn.feature_selection import mutual_info_classif, chi2, SelectKBest
-from imblearn.over_sampling import SMOTE
 from scipy import stats
 import warnings
 import time
@@ -723,7 +725,7 @@ def main():
                 st.markdown("#### 📊 Column Information")
                 col_info = pd.DataFrame({
                     'Column Name': df.columns,
-                    'Data Type': df.dtypes.values,
+                    'Data Type': df.dtypes.astype(str).values,
                     'Missing Values': df.isnull().sum().values,
                     'Missing %': (df.isnull().sum() / len(df) * 100).round(2).values,
                     'Unique Values': [df[col].nunique() for col in df.columns]
@@ -778,9 +780,8 @@ def main():
                         if viz_type in ["📊 Interactive (Plotly)", "🔢 Both"]:
                             st.markdown("#### 📊 Interactive Visualization (Plotly)")
                             st.plotly_chart(
-                                plot_distribution(df, 'Risk_Score', 'Risk Score Distribution'), 
-                                use_container_width=True
-                            )
+                                plot_distribution(df, 'Risk_Score', 'Risk Score Distribution'), use_container_width=True
+                            , key='plotly_chart_1')
                             
                             if viz_type == "🔢 Both":
                                 st.markdown("---")
@@ -1095,7 +1096,7 @@ def main():
                     if len(clean) > 0:
                         fig = px.box(clean, x='Risk_Level', y='Risk_Score', color='Risk_Level',
                                    title='Risk Score by Risk Level', points='outliers')
-                        st.plotly_chart(fig, use_container_width=True)
+                        st.plotly_chart(fig, use_container_width=True, key='plotly_chart_2')
         
         # ==================== HOME TAB 5: Data Quality Check ====================
         with home_tab5:
@@ -1503,33 +1504,39 @@ from sklearn.feature_selection import mutual_info_classif, chi2
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import LabelEncoder
 
+# Identify categorical columns
 categorical_cols = ['Location', 'Shape', 'Polymer_Type', 'pH', 'Salinity', 
                     'Industrial_Activity', 'Population_Density', 'Risk_Type', 
                     'Risk_Level', 'Author', 'Source']
 
+# One-hot encode
 df_encoded = pd.get_dummies(df, columns=categorical_cols, drop_first=True)
+
+# Separate features and target
 y = df['Risk_Level']
 
+# Encode target if categorical
+if y.dtype == 'object':
+    le = LabelEncoder()
+    y = le.fit_transform(y.astype(str))
+
+# Get one-hot encoded columns
 original_cols = df.columns.tolist()
 original_cols.remove('Risk_Level')
 ohe_cols = [col for col in df_encoded.columns if col not in original_cols]
 X = df_encoded[ohe_cols]
 
-# Encode target
-le = LabelEncoder()
-y_encoded = le.fit_transform(y.astype(str))
-
-# Mutual Information
-mi_scores = mutual_info_classif(X, y_encoded, random_state=42)
+# Apply Mutual Information
+mi_scores = mutual_info_classif(X, y, random_state=42)
 mi_scores = pd.Series(mi_scores, name="MI Scores", index=X.columns).sort_values(ascending=False)
 
-# Chi-squared
-chi2_scores, p_values = chi2(X, y_encoded)
+# Apply Chi-squared
+chi2_scores, p_values = chi2(X, y)
 chi2_scores = pd.Series(chi2_scores, name="Chi2 Scores", index=X.columns).sort_values(ascending=False)
 
 # Random Forest
 model = RandomForestClassifier(n_estimators=100, random_state=42)
-model.fit(X, y_encoded)
+model.fit(X, y)
 feature_importances = pd.Series(model.feature_importances_, 
                                 name="RF Importances", index=X.columns).sort_values(ascending=False)
             """, language='python')
@@ -1539,8 +1546,10 @@ feature_importances = pd.Series(model.feature_importances_,
         # Configuration
         st.markdown("### 🔧 Configuration")
         
+        # Check if Risk_Level exists
         if 'Risk_Level' not in df.columns:
-            st.error("❌ 'Risk_Level' column not found!")
+            st.error("❌ 'Risk_Level' column not found! This implementation requires 'Risk_Level' as target.")
+            st.info("Available columns: " + ", ".join(df.columns.tolist()))
             st.stop()
         
         col1, col2, col3 = st.columns(3)
@@ -1563,116 +1572,141 @@ feature_importances = pd.Series(model.feature_importances_,
         
         st.divider()
         
-        if st.button("🚀 Run Feature Selection", type="primary", use_container_width=True, key="fs_run_btn"):
+        _fs_cache_key = str(df.shape)
+        _fs_needs_run = st.session_state.get("fs_cache_key") != _fs_cache_key
+        if st.button("\U0001F504 Re-run Feature Selection", key="fs_rerun_btn"):
+            _fs_needs_run = True
+            st.session_state.fs_cache_key = None
+        if _fs_needs_run:
+            st.session_state.fs_cache_key = _fs_cache_key
             with st.spinner('Running feature selection...'):
                 try:
-                    from sklearn.feature_selection import mutual_info_classif, chi2
-                    from sklearn.ensemble import RandomForestClassifier
-                    from sklearn.preprocessing import LabelEncoder
-                    
+
                     # ============================================
-                    # PREPARE DATA
+                    # Step 1: Prepare Data
                     # ============================================
-                    st.markdown("### 📚 Step 1: Prepare Data")
+                    st.markdown("### 📚 Step 1: Import Libraries & Prepare Data")
                     
+                    # Identify available categorical columns
                     categorical_cols = ['Location', 'Shape', 'Polymer_Type', 'pH', 'Salinity', 
                                        'Industrial_Activity', 'Population_Density', 'Risk_Type', 
                                        'Risk_Level', 'Author', 'Source']
                     available_cats = [c for c in categorical_cols if c in df.columns]
                     
+                    st.success(f"✅ Libraries imported. {len(available_cats)} categorical columns found.")
+                    
+                    # One-hot encode categorical columns
                     df_encoded = pd.get_dummies(df, columns=available_cats, drop_first=True)
+                    
+                    # Separate target (y)
                     y = df['Risk_Level'].copy()
                     
+                    # Encode target variable to numeric
                     le = LabelEncoder()
                     y_encoded = le.fit_transform(y.astype(str))
                     
+                    st.info(f"Target encoded: {len(le.classes_)} classes → {list(le.classes_)}")
+                    
+                    # Get one-hot encoded feature columns
                     original_cols = df.columns.tolist()
                     if 'Risk_Level' in original_cols:
                         original_cols.remove('Risk_Level')
                     
                     ohe_cols = [col for col in df_encoded.columns if col not in original_cols]
                     X = df_encoded[ohe_cols].copy()
+                    
+                    # Ensure X is numeric
                     X = X.apply(pd.to_numeric, errors='coerce').fillna(0)
                     
                     st.success(f"✅ Data prepared: X = {X.shape[0]} rows × {X.shape[1]} features")
-                    st.info(f"Target classes: {list(le.classes_)}")
                     
                     st.divider()
                     
                     # ============================================
-                    # MUTUAL INFORMATION
+                    # Step 2: Mutual Information
                     # ============================================
-                    st.markdown("### 📊 Mutual Information Scores")
+                    st.markdown("### 📊 Step 2: Mutual Information Scores")
                     
                     mi_scores = mutual_info_classif(X, y_encoded, random_state=42)
                     mi_series = pd.Series(mi_scores, name="Mutual Information Scores", index=X.columns)
                     mi_series = mi_series.sort_values(ascending=False)
                     
+                    st.markdown(f"**Top {n_top_features} features based on Mutual Information:**")
                     mi_top = mi_series.head(n_top_features)
                     mi_df = pd.DataFrame({
                         'Rank': range(1, len(mi_top) + 1),
                         'Feature': mi_top.index,
-                        'MI Score': mi_top.values.round(6)
+                        'Mutual Information Score': mi_top.values.round(6)
                     })
                     
                     col1, col2 = st.columns([3, 2])
                     with col1:
-                        st.markdown(f"**Top {n_top_features} - Mutual Information:**")
                         st.dataframe(mi_df, use_container_width=True, hide_index=True)
                     with col2:
-                        fig = px.bar(mi_df.head(15), x='Feature', y='MI Score',
-                                   title='Mutual Information', color='MI Score',
+                        fig = px.bar(mi_df.head(15), x='Feature', y='Mutual Information Score',
+                                   title='Top 15 - Mutual Information', color='Mutual Information Score',
                                    color_continuous_scale='Blues')
                         fig.update_layout(height=400, xaxis_tickangle=-45)
                         st.plotly_chart(fig, use_container_width=True, key="fs_mi_bar")
                     
+                    st.session_state.mutual_info = mi_series
+                    
                     st.divider()
                     
                     # ============================================
-                    # CHI-SQUARED
+                    # Step 3: Chi-Squared Test
                     # ============================================
-                    st.markdown("### 🔢 Chi-Squared Test Scores")
+                    st.markdown("### 🔢 Step 3: Chi-Squared Test Scores")
                     
+                    # Chi2 requires non-negative values
                     chi2_scores, p_values = chi2(X, y_encoded)
                     chi2_series = pd.Series(chi2_scores, name="Chi-squared Scores", index=X.columns)
                     chi2_series = chi2_series.sort_values(ascending=False)
                     pval_series = pd.Series(p_values, name="P-Values", index=X.columns)
                     
+                    st.markdown(f"**Top {n_top_features} features based on Chi-squared Test:**")
                     chi2_top = chi2_series.head(n_top_features)
                     chi2_df = pd.DataFrame({
                         'Rank': range(1, len(chi2_top) + 1),
                         'Feature': chi2_top.index,
-                        'Chi2 Score': chi2_top.values.round(4),
+                        'Chi-Squared Score': chi2_top.values.round(4),
                         'P-Value': [pval_series[f].round(6) for f in chi2_top.index]
                     })
                     
                     col1, col2 = st.columns([3, 2])
                     with col1:
-                        st.markdown(f"**Top {n_top_features} - Chi-Squared:**")
                         st.dataframe(chi2_df, use_container_width=True, hide_index=True)
                     with col2:
-                        fig = px.bar(chi2_df.head(15), x='Feature', y='Chi2 Score',
-                                   title='Chi-Squared', color='Chi2 Score',
+                        fig = px.bar(chi2_df.head(15), x='Feature', y='Chi-Squared Score',
+                                   title='Top 15 - Chi-Squared', color='Chi-Squared Score',
                                    color_continuous_scale='Reds')
                         fig.update_layout(height=400, xaxis_tickangle=-45)
                         st.plotly_chart(fig, use_container_width=True, key="fs_chi2_bar")
                     
+                    st.session_state.chi2_scores = chi2_series
+                    
                     st.divider()
                     
                     # ============================================
-                    # RANDOM FOREST
+                    # Step 4: Random Forest
                     # ============================================
-                    st.markdown("### 🌲 Random Forest Feature Importances")
+                    st.markdown("### 🌲 Step 4: Random Forest Feature Importances")
                     
                     with st.spinner('Training RandomForestClassifier...'):
                         model = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
                         model.fit(X, y_encoded)
-                        st.success(f"✅ Model trained! Score: {model.score(X, y_encoded):.4f}")
+                        train_score = model.score(X, y_encoded)
+                        st.success(f"✅ Model trained! Training Score: {train_score:.4f}")
                     
-                    rf_series = pd.Series(model.feature_importances_, name="Feature Importances", index=X.columns)
-                    rf_series = rf_series.sort_values(ascending=False)
+                    feature_importances = pd.Series(
+                        model.feature_importances_, 
+                        name="Feature Importances", 
+                        index=X.columns
+                    )
+                    feature_importances = feature_importances.sort_values(ascending=False)
                     
-                    rf_top = rf_series.head(n_top_features)
+                    st.markdown(f"**Top {n_top_features} features based on RandomForest Feature Importances:**")
+                    rf_top = feature_importances.head(n_top_features)
                     rf_df = pd.DataFrame({
                         'Rank': range(1, len(rf_top) + 1),
                         'Feature': rf_top.index,
@@ -1682,379 +1716,519 @@ feature_importances = pd.Series(model.feature_importances_,
                     
                     col1, col2 = st.columns([3, 2])
                     with col1:
-                        st.markdown(f"**Top {n_top_features} - Random Forest:**")
                         st.dataframe(rf_df, use_container_width=True, hide_index=True)
                     with col2:
                         fig = px.bar(rf_df.head(15), x='Feature', y='Importance',
-                                   title='Random Forest', color='Importance',
+                                   title='Top 15 - Random Forest', color='Importance',
                                    color_continuous_scale='Greens')
                         fig.update_layout(height=400, xaxis_tickangle=-45)
                         st.plotly_chart(fig, use_container_width=True, key="fs_rf_bar")
                     
+                    st.session_state.feature_importance = feature_importances
+                    
                     st.divider()
                     
                     # ============================================
-                    # COMBINED SUMMARY
+                    # Step 5: Combined Summary
                     # ============================================
-                    st.markdown("### 📋 Combined Summary")
+                    st.markdown("### 📋 Combined Feature Selection Summary")
                     
+                    # Method agreement
                     top_mi_set = set(mi_series.head(n_top_features).index)
                     top_chi2_set = set(chi2_series.head(n_top_features).index)
-                    top_rf_set = set(rf_series.head(n_top_features).index)
+                    top_rf_set = set(feature_importances.head(n_top_features).index)
                     common_all = top_mi_set & top_chi2_set & top_rf_set
                     
                     col1, col2, col3, col4 = st.columns(4)
-                    with col1: st.metric("Total Features", X.shape[1])
-                    with col2: st.metric("Common in All 3", len(common_all))
-                    with col3: st.metric("Common MI & RF", len(top_mi_set & top_rf_set))
-                    with col4: st.metric("Common Chi2 & RF", len(top_chi2_set & top_rf_set))
+                    with col1:
+                        st.metric("Total Features", X.shape[1])
+                    with col2:
+                        st.metric("Common in All 3", len(common_all))
+                    with col3:
+                        st.metric("Common MI & RF", len(top_mi_set & top_rf_set))
+                    with col4:
+                        st.metric("Common Chi2 & RF", len(top_chi2_set & top_rf_set))
                     
                     # Combined table
                     all_top = list(dict.fromkeys(
-                        rf_series.head(n_top_features).index.tolist() +
+                        feature_importances.head(n_top_features).index.tolist() +
                         mi_series.head(n_top_features).index.tolist() +
                         chi2_series.head(n_top_features).index.tolist()
                     ))[:n_top_features]
                     
                     combined_df = pd.DataFrame({
                         'Feature': all_top,
-                        'RF Importance': [round(rf_series.get(f, 0), 6) for f in all_top],
+                        'RF Importance': [round(feature_importances.get(f, 0), 6) for f in all_top],
                         'MI Score': [round(mi_series.get(f, 0), 6) for f in all_top],
                         'Chi2 Score': [round(chi2_series.get(f, 0), 4) for f in all_top]
                     })
+                    
                     combined_df['Avg Score'] = combined_df[['RF Importance', 'MI Score', 'Chi2 Score']].mean(axis=1)
                     combined_df = combined_df.sort_values('Avg Score', ascending=False)
                     
                     st.dataframe(combined_df, use_container_width=True, hide_index=True)
                     
-                    # ============================================
-                    # STORE FOR MODELING
-                    # ============================================
-                    st.session_state.selected_features = rf_series.head(10).index.tolist()
-                    st.session_state.feature_importance = rf_series
-                    st.session_state.mutual_info = mi_series
-                    st.session_state.chi2_scores = chi2_series
-                    st.session_state.df_encoded = df_encoded
-                    st.session_state.ohe_cols = ohe_cols
+                    # Store for modeling
+                    st.session_state.selected_features = feature_importances.head(10).index.tolist()
                     
                     st.success(f"✅ Feature selection complete!")
-                    st.info(f"**Top 10 features stored for modeling:** {', '.join(st.session_state.selected_features[:10])}")
+                    st.info(f"**Top 10 features stored:** {', '.join(st.session_state.selected_features[:10])}")
                     
                     # Download
                     csv_combined = combined_df.to_csv(index=False)
                     st.download_button(
-                        "📥 Download Report", csv_combined,
-                        "feature_selection_report.csv", "text/csv", key="fs_download"
+                        "📥 Download Feature Selection Report",
+                        csv_combined,
+                        "feature_selection_report.csv",
+                        "text/csv",
+                        key="fs_download_report"
                     )
                     
                 except Exception as e:
-                    st.error(f"❌ Error: {str(e)}")
+                    st.error(f"❌ Feature selection error: {str(e)}")
                     st.info("Please check that your data has the required categorical columns and Risk_Level target variable.")
     # ==================== MODELING PAGE ====================
     elif section == "🤖 Modeling":
-        st.markdown('<p class="section-header">🤖 Model Training</p>', unsafe_allow_html=True)
-        
+        st.markdown('<p class="section-header">🤖 Model Training & Comparison</p>', unsafe_allow_html=True)
+
         data = st.session_state.processed_data if st.session_state.processed_data is not None else st.session_state.data
-        if data is None: 
+        if data is None:
             st.warning("⚠️ Load data first!")
             return
-        
-        # Use encoded dataframe if available from Feature Selection
-        if st.session_state.get('df_encoded') is not None:
-            df = st.session_state.df_encoded.copy()
-            st.success("✅ Using encoded data from Feature Selection")
-        else:
-            df = data.copy()
-        
-        # =============================================================
-        # CONFIGURATION
-        # =============================================================
-        st.markdown("## ⚙️ Model Configuration")
-        
-        col1, col2, col3 = st.columns(3)
+        df = data.copy()
+
+        # ── Configuration ─────────────────────────────────────────────
+        st.markdown("## ⚙️ Configuration")
+        col1, col2 = st.columns(2)
         with col1:
-            target = st.selectbox(
-                "Target Variable:", 
-                df.columns.tolist(),
-                index=df.columns.tolist().index('Risk_Level') if 'Risk_Level' in df.columns else 0,
-                key="model_target"
-            )
-        with col2:
             test_size = st.slider("Test Size:", 0.1, 0.5, 0.2, 0.05, key="model_test_size")
-        with col3:
-            if df[target].dtype == 'object' or df[target].nunique() < 10:
-                model_type = "Classification"
-            else:
-                model_type = st.selectbox("Model Type:", ["Classification", "Regression"], key="model_type")
-            st.metric("Model Type", model_type)
-        
+            enable_tuning = st.toggle("🧠 Enable Hyperparameter Tuning", value=False, 
+                                      help="Systematically searches for the best model settings (Grid Search). Takes 5-15s but yields higher accuracy.")
+        with col2:
+            avail = df.columns.tolist()
+            # Always default to Risk_Type + Risk_Level (the two key targets)
+            risk_cols = [c for c in ["Risk_Type", "Risk_Level"] if c in df.columns]
+            prior = st.session_state.get("selected_features") or []
+            defs = list(dict.fromkeys(risk_cols + [f for f in prior if f in avail]))
+            if not defs:
+                defs = risk_cols + df.select_dtypes(include=["float64","int64"]).columns.tolist()[:6]
+            defs = [f for f in defs if f in avail]
+            features = st.multiselect("Select Features:", avail, default=defs, key="model_features")
+
         st.divider()
-        
-        # =============================================================
-        # FEATURES
-        # =============================================================
-        st.markdown("### 🔧 Features")
-        
-        # Get all available features
-        all_features = [c for c in df.columns if c != target]
-        
-        # Check if features exist from Feature Selection
-        if st.session_state.get('selected_features') is not None:
-            preselected = [f for f in st.session_state.selected_features if f in all_features]
-            
-            if len(preselected) > 0:
-                st.success(f"✅ {len(preselected)} features loaded from Feature Selection")
-                
-                use_preselected = st.checkbox("Use features from Feature Selection", value=True, key="use_preselected")
-                
-                if use_preselected:
-                    features = preselected
-                else:
-                    features = st.multiselect(
-                        "Select Features:", 
-                        all_features,
-                        default=preselected[:10],
-                        key="model_features_manual"
-                    )
-            else:
-                st.warning("⚠️ Selected features not found in dataset. Please select manually.")
-                features = st.multiselect(
-                    "Select Features:", 
-                    all_features,
-                    default=all_features[:10] if len(all_features) > 10 else all_features,
-                    key="model_features_fallback"
+
+        # ── Target Variables Preview ───────────────────────────────────
+        st.markdown("## 🎯 Target Variables Preview")
+        st.caption("Understanding the two classification targets before training the models.")
+
+        tv1, tv2 = st.columns(2)
+
+        # ── Risk Type ──────────────────────────────────────────────────────
+        with tv1:
+            if "Risk_Type" in df.columns:
+                rt_counts = df["Risk_Type"].value_counts()
+                rt_total  = rt_counts.sum()
+                st.markdown("### 🟣 Risk Type")
+                st.caption("Categorical label describing **what kind** of risk is present (e.g. Chemical, Biological, Physical).")
+
+                # Metric row
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Total Records", rt_total)
+                m2.metric("Unique Classes", rt_counts.nunique())
+                m3.metric("Most Common", rt_counts.idxmax())
+
+                # Bar chart (easier to compare than pie)
+                rt_df = rt_counts.reset_index()
+                rt_df.columns = ["Risk Type", "Count"]
+                rt_df["Percentage"] = (rt_df["Count"] / rt_total * 100).round(1)
+                rt_df["Label"] = rt_df["Risk Type"] + " (" + rt_df["Percentage"].astype(str) + "%)"
+
+                fig_rt = px.bar(
+                    rt_df, x="Risk Type", y="Count",
+                    color="Risk Type",
+                    text=rt_df["Percentage"].astype(str) + "%",
+                    title="Risk Type — Class Distribution",
+                    color_discrete_sequence=px.colors.qualitative.Set2,
+                    height=340
                 )
-        else:
-            st.warning("⚠️ No features from Feature Selection. Select manually.")
-            default_features = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
-            default_features = [f for f in default_features if f in all_features][:10]
-            
-            features = st.multiselect(
-                "Select Features:", 
-                all_features,
-                default=default_features,
-                key="model_features_manual"
+                fig_rt.update_traces(textposition="outside", textfont_size=12)
+                fig_rt.update_layout(
+                    showlegend=False,
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    margin=dict(t=40, b=10, l=10, r=10),
+                    xaxis=dict(tickfont=dict(size=11)),
+                    yaxis_title="Count"
+                )
+                st.plotly_chart(fig_rt, use_container_width=True, key="model_rt_bar")
+
+                # Class breakdown table
+                with st.expander("📋 Class Breakdown Table"):
+                    st.dataframe(rt_df[["Risk Type","Count","Percentage"]].rename(
+                        columns={"Percentage": "% of Total"}
+                    ), use_container_width=True, hide_index=True)
+
+        # ── Risk Level ─────────────────────────────────────────────────────
+        with tv2:
+            if "Risk_Level" in df.columns:
+                rl_counts = df["Risk_Level"].value_counts()
+                rl_total  = rl_counts.sum()
+
+                # Define natural order for risk levels
+                order_map = {"Low": 0, "Medium": 1, "High": 2, "Critical": 3,
+                             "Very Low": -1, "Very High": 4}
+                rl_df = rl_counts.reset_index()
+                rl_df.columns = ["Risk Level", "Count"]
+                rl_df["Percentage"] = (rl_df["Count"] / rl_total * 100).round(1)
+                rl_df["_order"] = rl_df["Risk Level"].map(lambda x: order_map.get(x, 99))
+                rl_df = rl_df.sort_values("_order").drop(columns="_order")
+
+                st.markdown("### 🟡 Risk Level")
+                st.caption("Ordinal label describing **how severe** the risk is (e.g. Low, Medium, High, Critical).")
+
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Total Records", rl_total)
+                m2.metric("Unique Classes", rl_counts.nunique())
+                m3.metric("Highest Risk", rl_df.iloc[-1]["Risk Level"] if len(rl_df) > 0 else "N/A")
+
+                # Color scale: green → red by severity
+                level_colors = {
+                    "Very Low": "#27ae60", "Low": "#2ecc71",
+                    "Medium": "#f39c12", "High": "#e67e22",
+                    "Very High": "#e74c3c", "Critical": "#c0392b"
+                }
+                rl_df["Color"] = rl_df["Risk Level"].map(
+                    lambda x: level_colors.get(x, "#3498db")
+                )
+
+                fig_rl = px.bar(
+                    rl_df, x="Risk Level", y="Count",
+                    color="Risk Level",
+                    text=rl_df["Percentage"].astype(str) + "%",
+                    title="Risk Level — Class Distribution",
+                    color_discrete_map=level_colors,
+                    height=340
+                )
+                fig_rl.update_traces(textposition="outside", textfont_size=12)
+                fig_rl.update_layout(
+                    showlegend=False,
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    margin=dict(t=40, b=10, l=10, r=10),
+                    xaxis=dict(tickfont=dict(size=11)),
+                    yaxis_title="Count"
+                )
+                st.plotly_chart(fig_rl, use_container_width=True, key="model_rl_bar")
+
+                with st.expander("📋 Class Breakdown Table"):
+                    st.dataframe(rl_df[["Risk Level","Count","Percentage"]].rename(
+                        columns={"Percentage": "% of Total"}
+                    ), use_container_width=True, hide_index=True)
+
+        # ── Class balance insight ───────────────────────────────────────────
+        if "Risk_Type" in df.columns and "Risk_Level" in df.columns:
+            rt_imb = df["Risk_Type"].value_counts()
+            rl_imb = df["Risk_Level"].value_counts()
+            rt_ratio = round(rt_imb.max() / max(rt_imb.min(), 1), 1)
+            rl_ratio = round(rl_imb.max() / max(rl_imb.min(), 1), 1)
+
+            rt_status = "balanced ✅" if rt_ratio < 3 else "imbalanced ⚠️ (Cost-Sensitive weights applied)"
+            rl_status = "balanced ✅" if rl_ratio < 3 else "imbalanced ⚠️ (Cost-Sensitive weights applied)"
+            balance_msg = (
+                "💡 **Class Balance Check**\n"
+                f"- **Risk Type** max/min ratio: **{rt_ratio}x** — {rt_status}\n"
+                f"- **Risk Level** max/min ratio: **{rl_ratio}x** — {rl_status}"
             )
-        
+            st.info(balance_msg)
+
         st.divider()
-        
-        # =============================================================
-        # MODELS
-        # =============================================================
-        st.markdown("### 🤖 Models to Train")
-        st.markdown("""
-        | Model | Type | Description |
-        |-------|------|-------------|
-        | Logistic Regression | Linear | Simple, interpretable baseline |
-        | Random Forest | Ensemble | Robust tree-based method |
-        | Gradient Boosting | Ensemble | Sequential boosting |
-        """)
-        
-        st.divider()
-        
-        # =============================================================
-        # TRAIN
-        # =============================================================
+
         if len(features) == 0:
             st.warning("⚠️ Please select at least one feature.")
         else:
-            st.markdown(f"**Target:** `{target}` | **Type:** {model_type} | **Features:** {len(features)}")
+            # Auto-run: detect if features/data changed
+            _cache_key = str(sorted(features)) + str(test_size)
+            _needs_run = st.session_state.get("model_cache_key") != _cache_key
             
-            if st.button("🚀 Train Models", type="primary", use_container_width=True, key="train_models_btn"):
-                
-                with st.spinner('Training models...'):
-                    
-                    # ============================================
-                    # Prepare Data
-                    # ============================================
-                    st.markdown("### 📊 Data Preparation")
-                    
-                    X = df[features].copy()
-                    y = df[target].copy()
-                    
-                    # Handle missing
-                    mask = y.notna()
-                    X = X.loc[mask]
-                    y = y.loc[mask]
-                    
-                    # Convert to numeric
-                    X = X.apply(pd.to_numeric, errors='coerce')
-                    X = X.fillna(0)
-                    
-                    # Handle target
-                    if y.dtype == 'object':
-                        from sklearn.preprocessing import LabelEncoder
-                        le = LabelEncoder()
-                        y_encoded = le.fit_transform(y.astype(str))
-                        st.info(f"Target encoded: {len(le.classes_)} classes - {list(le.classes_)}")
-                    else:
-                        y_encoded = pd.to_numeric(y, errors='coerce').fillna(0).astype(int).values
-                    
-                    y_encoded = np.asarray(y_encoded, dtype=int).flatten()
-                    
-                    # Remove NaN
-                    valid_y = ~np.isnan(y_encoded)
-                    X = X.iloc[valid_y]
-                    y_encoded = y_encoded[valid_y]
-                    
-                    X = X.dropna(axis=1, how='any')
-                    
-                    min_len = min(len(X), len(y_encoded))
-                    X = X.iloc[:min_len]
-                    y_encoded = y_encoded[:min_len]
-                    
-                    # Remove low variance features
-                    from sklearn.feature_selection import VarianceThreshold
-                    selector = VarianceThreshold(threshold=0.01)
-                    X_selected = selector.fit_transform(X)
-                    selected_indices = selector.get_support(indices=True)
-                    X = X.iloc[:, selected_indices]
-                    
-                    # Split
-                    unique_classes = len(np.unique(y_encoded))
-                    if unique_classes > 1:
-                        try:
+            col_run, col_refresh = st.columns([3,1])
+            with col_refresh:
+                if st.button("🔄 Re-run", key="rerun_btn"):
+                    _needs_run = True
+                    st.session_state.model_cache_key = None
+            
+            if _needs_run:
+                st.session_state.model_cache_key = _cache_key
+                with st.spinner("Running modeling pipeline..."):
+                        target_results = {}
+                        st.session_state.best_models = {}
+                        active_targets = [t for t in ["Risk_Type","Risk_Level"] if t in df.columns]
+
+                        for target in active_targets:
+                            st.markdown("---")
+                            st.markdown(f"## 🎯 Target: `{target}`")
+
+                            # ── Prepare Data ─────────────────────────────────────────
+                            st.markdown("### 📋 Prepare Data")
+                            var_suffix = "rt" if target == "Risk_Type" else "rl"
+                            vs = var_suffix
+
+                            X = df[[f for f in features if f != target and f in df.columns]].copy()
+                            y = df[target].copy()
+                            mask = y.notna()
+                            X, y = X.loc[mask], y.loc[mask]
+                            
+                            # Clean target classes: drop rare typo classes (< 5 samples)
+                            # This matches the user's expectation of 11/10 classes and allows SMOTE to run!
+                            y_counts = y.value_counts()
+                            valid_classes = y_counts[y_counts >= 5].index
+                            valid_mask = y.isin(valid_classes)
+                            X, y = X.loc[valid_mask], y.loc[valid_mask]
+                            
+                            cat_cols = X.select_dtypes(include=["object"]).columns.tolist()
+                            if cat_cols:
+                                X = pd.get_dummies(X, columns=cat_cols, drop_first=True)
+                            X = X.apply(pd.to_numeric, errors="coerce").fillna(X.median(numeric_only=True)).fillna(0)
+                            le = LabelEncoder()
+                            y_encoded = le.fit_transform(y.astype(str))
+                            st.session_state[f"label_encoder_{target}"] = le
+                            class_names = le.classes_
+                            counts = np.bincount(y_encoded.astype(int))
+                            can_stratify = len(np.unique(y_encoded)) > 1 and all(counts >= 2)
                             X_train, X_test, y_train, y_test = train_test_split(
-                                X, y_encoded, test_size=test_size, random_state=42, stratify=y_encoded
+                                X, y_encoded, test_size=test_size, random_state=42,
+                                stratify=y_encoded if can_stratify else None
                             )
-                        except:
-                            X_train, X_test, y_train, y_test = train_test_split(
-                                X, y_encoded, test_size=test_size, random_state=42
+                            
+                            # No SMOTE or balancing - letting the models find the majority class baseline
+
+                            m1,m2,m3,m4 = st.columns(4)
+                            m1.metric("Train Samples", X_train.shape[0])
+                            m2.metric("Test Samples",  X_test.shape[0])
+                            m3.metric("Features",      X_train.shape[1])
+                            m4.metric("Classes",       len(class_names))
+
+                            st.code(
+                                f"X_train_{vs} shape: {X_train.shape}\n"
+                                f"X_test_{vs} shape:  {X_test.shape}\n"
+                                f"y_train_{vs} shape: {y_train.shape}\n"
+                                f"y_test_{vs} shape:  {y_test.shape}\n"
+                                f"Classes: {list(class_names)}",
+                                language="text"
                             )
-                    else:
-                        X_train, X_test, y_train, y_test = train_test_split(
-                            X, y_encoded, test_size=test_size, random_state=42
-                        )
-                    
-                    st.success(f"✅ Data prepared: {X_train.shape[0]} train | {X_test.shape[0]} test | {X_train.shape[1]} features")
-                    
-                    st.divider()
-                    
-                    # ============================================
-                    # Train Models
-                    # ============================================
-                    st.markdown("### 🤖 Training Models")
-                    
-                    models = {}
-                    
-                    # Logistic Regression
-                    st.markdown("#### Training Logistic Regression Model...")
-                    lr_progress = st.progress(0)
-                    try:
-                        from sklearn.linear_model import LogisticRegression
-                        lr = LogisticRegression(random_state=42, max_iter=2000, C=0.1, solver='lbfgs')
-                        lr_progress.progress(30)
-                        lr.fit(X_train, y_train)
-                        lr_progress.progress(100)
-                        models['Logistic Regression'] = lr
-                        st.success("✅ Logistic Regression Complete")
-                    except Exception as e:
-                        lr_progress.progress(100)
-                        st.error(f"Failed: {str(e)[:80]}")
-                    
-                    st.markdown("---")
-                    
-                    # Random Forest
-                    st.markdown("#### Training RandomForestClassifier Model...")
-                    rf_progress = st.progress(0)
-                    try:
-                        from sklearn.ensemble import RandomForestClassifier
-                        rf = RandomForestClassifier(
-                            n_estimators=200, max_depth=15, min_samples_split=5,
-                            random_state=42, n_jobs=-1
-                        )
-                        rf_progress.progress(30)
-                        rf.fit(X_train, y_train)
-                        rf_progress.progress(100)
-                        models['RandomForestClassifier'] = rf
-                        st.success("✅ RandomForestClassifier Complete")
-                    except Exception as e:
-                        rf_progress.progress(100)
-                        st.error(f"Failed: {str(e)[:80]}")
-                    
-                    st.markdown("---")
-                    
-                    # Gradient Boosting
-                    st.markdown("#### Training GradientBoostingClassifier Model...")
-                    gb_progress = st.progress(0)
-                    try:
-                        from sklearn.ensemble import GradientBoostingClassifier
-                        gb = GradientBoostingClassifier(
-                            n_estimators=200, max_depth=5, learning_rate=0.1,
-                            random_state=42
-                        )
-                        gb_progress.progress(30)
-                        gb.fit(X_train, y_train)
-                        gb_progress.progress(100)
-                        models['GradientBoostingClassifier'] = gb
-                        st.success("✅ GradientBoostingClassifier Complete")
-                    except Exception as e:
-                        gb_progress.progress(100)
-                        st.error(f"Failed: {str(e)[:80]}")
-                    
-                    st.divider()
-                    
-                    # ============================================
-                    # Evaluation
-                    # ============================================
-                    st.markdown("### 📊 Model Performance Comparison")
-                    
-                    results = []
-                    for name, model in models.items():
-                        y_pred = model.predict(X_test)
-                        results.append({
-                            'Model': name,
-                            'Accuracy': accuracy_score(y_test, y_pred),
-                            'Precision': precision_score(y_test, y_pred, average='weighted', zero_division=0),
-                            'Recall': recall_score(y_test, y_pred, average='weighted', zero_division=0),
-                            'F1-Score': f1_score(y_test, y_pred, average='weighted', zero_division=0)
-                        })
-                    
-                    results_df = pd.DataFrame(results)
-                    
-                    # Format to match your expected output
-                    st.markdown("---")
-                    st.markdown("**Model Performance Comparison ---**")
-                    st.dataframe(results_df.style.format({
-                        'Accuracy': '{:.6f}',
-                        'Precision': '{:.6f}',
-                        'Recall': '{:.6f}',
-                        'F1-Score': '{:.6f}'
-                    }), use_container_width=True)
-                    
-                    # Show as text
-                    st.code(results_df.to_string(index=True))
-                    
-                    # Bar chart
-                    fig = px.bar(
-                        results_df.melt(id_vars='Model', var_name='Metric', value_name='Score'),
-                        x='Model', y='Score', color='Metric',
-                        barmode='group', height=400,
-                        title='Model Performance Comparison',
-                        color_discrete_sequence=px.colors.qualitative.Set2
-                    )
-                    fig.update_layout(yaxis_range=[0.9, 1.0])
-                    st.plotly_chart(fig, use_container_width=True, key="model_eval_chart")
-                    
-                    # Best model
-                    best_idx = results_df['F1-Score'].idxmax()
-                    best_model = results_df.iloc[best_idx]['Model']
-                    best_f1 = results_df.iloc[best_idx]['F1-Score']
-                    best_acc = results_df.iloc[best_idx]['Accuracy']
-                    
-                    st.success(f"""
-                    🏆 **Best Model: {best_model}**
-                    - Accuracy: {best_acc:.6f}
-                    - F1-Score: {best_f1:.6f}
-                    """)
-                    
-                    # Store
-                    st.session_state.models = models
-                    st.session_state.trained = True
-                    st.session_state.X_test = X_test
-                    st.session_state.y_test = y_test
-                    st.session_state.X_train = X_train
-                    st.session_state.y_train = y_train
+
+                            # ── Classification Models ─────────────────────────────────
+                            st.markdown("### 🔎 Classification Models")
+                            st.markdown(
+                                "| # | Model | Type | Key Strengths |\n"
+                                "|---|-------|------|---------------|\n"
+                                "| 1 | **Logistic Regression** | Linear | Interpretable, fast, multi-class via OvR |\n"
+                                "| 2 | **Random Forest** | Ensemble (Bagging) | Robust, handles non-linearity, feature importance |\n"
+                                "| 3 | **Gradient Boosting** | Ensemble (Boosting) | High accuracy, handles class overlap |"
+                            )
+
+                            # ── Train Models ─────────────────────────────────────────
+                            st.markdown("### 🤖 Train Models")
+                            
+                            from sklearn.ensemble import GradientBoostingClassifier
+                            from sklearn.model_selection import RandomizedSearchCV
+                            from sklearn.pipeline import make_pipeline
+                            from sklearn.preprocessing import StandardScaler
+
+                            # Enable tuning toggle
+                            enable_tuning = st.session_state.get("enable_tuning", False)
+
+                            # 2. Base Models (Raw, unfiltered data for maximum baseline accuracy)
+                            base_models = {
+                                "Logistic Regression": LogisticRegression(random_state=42, max_iter=2000),
+                                "Random Forest": RandomForestClassifier(n_estimators=300, max_depth=20, min_samples_split=2, random_state=42, n_jobs=-1),
+                                "Gradient Boosting": GradientBoostingClassifier(n_estimators=200, learning_rate=0.1, max_depth=5, random_state=42)
+                            }
+                            
+                            # Hyperparameter Grids
+                            param_grids = {
+                                "Logistic Regression": {'C': [0.1, 1.0, 10.0]},
+                                "Random Forest": {
+                                    'n_estimators': [50, 100, 150],
+                                    'max_depth': [None, 10, 20],
+                                    'min_samples_split': [2, 5]
+                                },
+                                "Gradient Boosting": {
+                                    'learning_rate': [0.05, 0.1, 0.2],
+                                    'max_depth': [3, 5, 7]
+                                }
+                            }
+
+                            trained_models = {}
+                            pcols = st.columns(4)
+                            for idx, (name, model) in enumerate(base_models.items()):
+                                with pcols[idx]:
+                                    st.markdown(f"**{name}**")
+                                    bar = st.progress(0)
+                                    try:
+                                        if enable_tuning and param_grids[name]:
+                                            st.caption("🔍 Tuning...")
+                                            search = RandomizedSearchCV(model, param_grids[name], n_iter=3, cv=3, scoring='f1_weighted', random_state=42, n_jobs=-1)
+                                            search.fit(X_train, y_train)
+                                            best_model = search.best_estimator_
+                                            trained_models[name] = best_model
+                                            bar.progress(100)
+                                            st.success(f"✅ Tuned!")
+                                        else:
+                                            st.caption("🚀 Training...")
+                                            model.fit(X_train, y_train)
+                                            bar.progress(100)
+                                            trained_models[name] = model
+                                            st.success(f"✅ Done (train acc: {model.score(X_train,y_train):.4f})")
+                                    except Exception as ex:
+                                        bar.progress(100)
+                                        st.error(f"❌ {str(ex)[:60]}")
+
+                            # ── Evaluate Models ───────────────────────────────────────
+                            st.markdown("### 📈 Evaluate Models")
+                            st.caption("Metrics computed with **weighted** averaging (accounts for class imbalance)")
+
+                            eval_data = []
+                            output_lines = []
+                            for name, model in trained_models.items():
+                                y_pred = model.predict(X_test)
+                                acc  = round(accuracy_score(y_test, y_pred), 4)
+                                prec = round(precision_score(y_test, y_pred, average="weighted", zero_division=0), 4)
+                                rec  = round(recall_score(y_test, y_pred, average="weighted", zero_division=0), 4)
+                                f1   = round(f1_score(y_test, y_pred, average="weighted", zero_division=0), 4)
+                                eval_data.append({"Model": name, "Accuracy": acc, "Precision": prec, "Recall": rec, "F1 Score": f1})
+                                output_lines += [
+                                    f"--- {name} Model Evaluation for '{target}' ---",
+                                    f"Accuracy:  {acc}",
+                                    f"Precision: {prec}",
+                                    f"Recall:    {rec}",
+                                    f"F1-Score:  {f1}",
+                                    "-" * 60, "",
+                                ]
+
+                            # Append average summary to the output block
+                            if eval_data:
+                                avg_acc  = round(sum(d["Accuracy"]  for d in eval_data) / len(eval_data), 4)
+                                avg_prec = round(sum(d["Precision"] for d in eval_data) / len(eval_data), 4)
+                                avg_rec  = round(sum(d["Recall"]    for d in eval_data) / len(eval_data), 4)
+                                avg_f1_v = round(sum(d["F1 Score"]  for d in eval_data) / len(eval_data), 4)
+                                output_lines += [
+                                    "=" * 60,
+                                    f"AVERAGE across {len(eval_data)} models for '{target}'",
+                                    "=" * 60,
+                                    f"Accuracy:  {avg_acc}",
+                                    f"Precision: {avg_prec}",
+                                    f"Recall:    {avg_rec}",
+                                    f"F1-Score:  {avg_f1_v}",
+                                    "=" * 60,
+                                ]
+                            st.code("\n".join(output_lines), language="text")
+                            eval_df = pd.DataFrame(eval_data)
+                            st.dataframe(eval_df, use_container_width=True, hide_index=True)
+
+                            # ── Average metrics across all models ─────────────
+                            avg_acc  = round(eval_df["Accuracy"].mean(), 4)
+                            avg_prec = round(eval_df["Precision"].mean(), 4)
+                            avg_rec  = round(eval_df["Recall"].mean(), 4)
+                            avg_f1   = round(eval_df["F1 Score"].mean(), 4)
+                            st.markdown("#### 📐 Average Performance Across All Models")
+                            am1, am2, am3, am4 = st.columns(4)
+                            am1.metric("Avg Accuracy",  f"{avg_acc:.4f}")
+                            am2.metric("Avg Precision", f"{avg_prec:.4f}")
+                            am3.metric("Avg Recall",    f"{avg_rec:.4f}")
+                            am4.metric("Avg F1 Score",  f"{avg_f1:.4f}")
+
+                            fig_eval = px.bar(
+                                eval_df.melt(id_vars="Model", var_name="Metric", value_name="Score"),
+                                x="Model", y="Score", color="Metric", barmode="group",
+                                title=f"Model Performance — {target}",
+                                color_discrete_sequence=px.colors.qualitative.Set2, height=380
+                            )
+                            fig_eval.update_layout(yaxis_range=[0,1.05])
+                            st.plotly_chart(fig_eval, use_container_width=True, key=f"eval_chart_{target}")
+
+                            best_idx  = eval_df["F1 Score"].idxmax()
+                            best_name = eval_df.iloc[best_idx]["Model"]
+                            best_f1   = eval_df.iloc[best_idx]["F1 Score"]
+                            st.success(f"🏆 Best model for `{target}`: **{best_name}** (F1 = {best_f1})")
+
+                            target_results[target] = eval_df
+                            st.session_state.best_models[target] = trained_models[best_name]
+                            st.session_state[f"features_{target}"] = list(X.columns)
+
+                            st.download_button(
+                                f"📥 Download {target} Evaluation CSV",
+                                eval_df.to_csv(index=False),
+                                f"eval_{target}.csv", "text/csv",
+                                key=f"dl_eval_{target}"
+                            )
+
+                        # ── Compare Performance ───────────────────────────────────────
+                        st.markdown("---")
+                        st.markdown("## ⚖️ Compare Model Performance")
+                        st.markdown("Performance comparison for **Risk_Type** and **Risk_Level**:")
+
+                        if len(target_results) >= 2:
+                            ccols = st.columns(len(target_results))
+                            for i, (t, res) in enumerate(target_results.items()):
+                                with ccols[i]:
+                                    st.markdown(f"#### `{t}`")
+                                    st.dataframe(res, use_container_width=True, hide_index=True)
+                                    best = res.loc[res["F1 Score"].idxmax()]
+                                    st.success(f"🥇 {best['Model']} — F1: {best['F1 Score']}")
+
+                            summary_data = []
+                            for t, res in target_results.items():
+                                best = res.loc[res["F1 Score"].idxmax()]
+                                summary_data.append({
+                                    "Target": t,
+                                    "Best Model": best["Model"],
+                                    "Avg Accuracy": round(res["Accuracy"].mean(), 4),
+                                    "Best Accuracy": best["Accuracy"],
+                                    "Avg F1": round(res["F1 Score"].mean(), 4),
+                                    "Best F1": best["F1 Score"],
+                                    "Best Precision": best["Precision"],
+                                    "Best Recall": best["Recall"],
+                                })
+                            summary_df = pd.DataFrame(summary_data)
+                            st.markdown("### 📊 Combined Summary")
+                            st.dataframe(summary_df, use_container_width=True, hide_index=True)
+
+                            fig_cmp = px.bar(
+                                summary_df.melt(id_vars="Target", value_vars=["Best Accuracy","Best Precision","Best Recall","Best F1"],
+                                                var_name="Metric", value_name="Score"),
+                                x="Metric", y="Score", color="Target", barmode="group",
+                                title="Best Model: Risk_Type vs Risk_Level",
+                                color_discrete_sequence=["#6c5ce7","#00b894"], height=400
+                            )
+                            fig_cmp.update_layout(yaxis_range=[0,1.05])
+                            st.plotly_chart(fig_cmp, use_container_width=True, key="compare_targets_chart")
+                        elif len(target_results) == 1:
+                            t, res = list(target_results.items())[0]
+                            st.dataframe(res, use_container_width=True, hide_index=True)
+
+                        st.session_state.trained = True
+                        st.session_state.target_results = target_results
+
+                        st.markdown("### 📥 Download Trained Models")
+                        import joblib as _jl, io as _io
+                        dcols = st.columns(max(1, len(st.session_state.best_models)))
+                        for i, (t, m_obj) in enumerate(st.session_state.best_models.items()):
+                            buf = _io.BytesIO()
+                            _jl.dump(m_obj, buf); buf.seek(0)
+                            with dcols[i]:
+                                st.download_button(f"⬇️ {t} Model (.pkl)", buf,
+                                    file_name=f"best_model_{t}.pkl",
+                                    mime="application/octet-stream", key=f"dl_model_{t}")
+
+            elif st.session_state.get("target_results"):
+                st.info("✅ Results loaded from previous run. Change features or click 🔄 Re-run to refresh.")
+                # Show cached comparison if available
+                if st.session_state.get("target_results"):
+                    for t, res in st.session_state.target_results.items():
+                        st.markdown(f"#### Results for `{t}`")
+                        st.dataframe(res, use_container_width=True, hide_index=True)
+                        best = res.loc[res["F1 Score"].idxmax()]
+                        st.success(f"🏆 Best: **{best['Model']}** — F1: {best['F1 Score']}")
     # ==================== CROSS VALIDATION & EVALUATION PAGE ====================
     # ==================== CROSS VALIDATION & EVALUATION PAGE ====================
     elif section == "📊 Cross Validation & Evaluation":
@@ -2086,21 +2260,20 @@ feature_importances = pd.Series(model.feature_importances_,
             col1, col2, col3 = st.columns(3)
             with col1:
                 target = st.selectbox(
-                    "Target Variable:", 
-                    df.columns.tolist(),
-                    index=df.columns.tolist().index('Risk_Level') if 'Risk_Level' in df.columns else 0,
+                    "Target Variable:",
+                    [c for c in ["Risk_Type", "Risk_Level"] if c in df.columns] or df.columns.tolist(),
+                    index=0,
                     key="cv_target"
                 )
             with col2:
                 all_features = [c for c in df.columns if c != target]
-                
-                default_features = st.session_state.get('selected_features', None)
-                if default_features is not None:
-                    default_features = [f for f in default_features if f in all_features]
-                else:
-                    default_features = df.select_dtypes(include=['float64', 'int64']).columns.tolist()[:10]
-                    default_features = [f for f in default_features if f in all_features and f != target]
-                
+                # Always pre-select the other risk column + numeric cols
+                risk_defaults = [c for c in ["Risk_Type", "Risk_Level"] if c in all_features]
+                num_defaults = [f for f in df.select_dtypes(include=['float64','int64']).columns.tolist()[:6] if f in all_features]
+                default_features = list(dict.fromkeys(risk_defaults + num_defaults))
+                prior = st.session_state.get('selected_features') or []
+                if prior:
+                    default_features = list(dict.fromkeys(risk_defaults + [f for f in prior if f in all_features]))
                 features = st.multiselect("Features:", all_features, default=default_features, key="cv_features")
             with col3:
                 test_size = st.slider("Test Size:", 0.1, 0.5, 0.2, 0.05, key="cv_test_size")
@@ -2112,7 +2285,13 @@ feature_importances = pd.Series(model.feature_importances_,
             if len(features) == 0:
                 st.error("Please select at least one feature.")
             else:
-                if st.button("🚀 Split Data & Train Models", type="primary", use_container_width=True, key="cv_split_train"):
+                _cv_key = str(sorted(features)) + str(test_size) + str(target)
+                _cv_needs_run = st.session_state.get("cv_cache_key") != _cv_key
+                if st.button("🔄 Re-run CV Pipeline", key="cv_rerun_btn"):
+                    _cv_needs_run = True
+                    st.session_state.cv_cache_key = None
+                if _cv_needs_run:
+                    st.session_state.cv_cache_key = _cv_key
                     with st.spinner('Preparing data and training models...'):
                         X = df[features].copy()
                         y = df[target].copy()
@@ -2125,8 +2304,14 @@ feature_importances = pd.Series(model.feature_importances_,
                             le = LabelEncoder()
                             y = le.fit_transform(y)
                         
+                        # One-hot encode any categorical columns present in X
+                        categorical_cols = X.select_dtypes(include=['object']).columns.tolist()
+                        if len(categorical_cols) > 0:
+                            X = pd.get_dummies(X, columns=categorical_cols, drop_first=True)
+
                         X = X.apply(pd.to_numeric, errors='coerce')
-                        X = X.fillna(X.median())
+                        X = X.fillna(X.median(numeric_only=True))
+                        X = X.fillna(0)
                         X = X.dropna(axis=1, how='all')
                         
                         if X.shape[1] == 0:
@@ -2139,6 +2324,14 @@ feature_importances = pd.Series(model.feature_importances_,
                         X_train, X_test, y_train, y_test = train_test_split(
                             X, y, test_size=test_size, random_state=42, stratify=stratify_param
                         )
+                        
+                        # Apply SMOTE for imbalanced classes
+                        try:
+                            smote = SMOTE(random_state=42)
+                            X_train, y_train = smote.fit_resample(X_train, y_train)
+                            st.info(f"Applied SMOTE to balance training classes. New train size: {X_train.shape[0]}")
+                        except Exception as e:
+                            st.warning(f"Could not apply SMOTE (classes might be too small): {e}")
                         
                         st.session_state.cv_X_train = X_train
                         st.session_state.cv_X_test = X_test
@@ -2171,13 +2364,14 @@ feature_importances = pd.Series(model.feature_importances_,
                     with col3:
                         st.markdown("**Gradient Boosting**")
                         gb_pb = st.progress(0)
+                        from sklearn.ensemble import GradientBoostingClassifier
                         gradient_boosting_model = GradientBoostingClassifier(n_estimators=100, random_state=42)
                         gradient_boosting_model.fit(X_train, y_train)
                         gb_pb.progress(100)
                         st.success("✅ Trained")
                         st.session_state.cv_gb_model = gradient_boosting_model
                     
-                    st.success("All models trained! Go to **Evaluate Models** tab.")
+                    st.success("All models trained! Click the **Evaluate Models** tab above to see results.")
         
         # =============================================================
         # TAB 2: Evaluate Models
@@ -2186,8 +2380,8 @@ feature_importances = pd.Series(model.feature_importances_,
             st.markdown("### 📊 Evaluate the Models")
             st.markdown("Evaluate each trained model on the testing data using accuracy, precision, recall, and F1-score.")
             
-            if not hasattr(st.session_state, 'cv_lr_model'):
-                st.warning("⚠️ Please complete Configuration tab first.")
+            if not hasattr(st.session_state, 'cv_lr_model') or not hasattr(st.session_state, 'cv_rf_model') or not hasattr(st.session_state, 'cv_gb_model'):
+                st.warning("⚠️ Please complete the Configuration tab and click **'Train and Validate Models'** first.")
             else:
                 X_test = st.session_state.cv_X_test
                 y_test = st.session_state.cv_y_test
@@ -2196,7 +2390,7 @@ feature_importances = pd.Series(model.feature_importances_,
                 random_forest_model = st.session_state.cv_rf_model
                 gradient_boosting_model = st.session_state.cv_gb_model
                 
-                if st.button("📊 Evaluate All Models", type="primary", use_container_width=True, key="cv_eval_btn"):
+                if True:  # auto-evaluate
                     with st.spinner('Evaluating models...'):
                         
                         # Logistic Regression
@@ -2283,7 +2477,7 @@ feature_importances = pd.Series(model.feature_importances_,
                         st.session_state.cv_best_name = best_name
                         st.session_state.cv_evaluation_ran = True
                         
-                        st.success("Evaluation complete! Go to **K-Fold CV** tab.")
+                        st.success("Evaluation complete! Click the **K-Fold CV** tab above to run cross validation.")
         
         # =============================================================
         # TAB 3: K-Fold Cross Validation
@@ -2306,9 +2500,10 @@ feature_importances = pd.Series(model.feature_importances_,
                 with col3:
                     st.metric("Features", str(X_train.shape[1]))
                 
-                if st.button("🔄 Run K-Fold Cross Validation", type="primary", use_container_width=True, key="cv_run_btn"):
+                if True:  # auto-run K-Fold CV
                     with st.spinner('Running ' + str(cv_folds) + '-Fold Cross Validation...'):
                         
+                        from sklearn.ensemble import GradientBoostingClassifier
                         models_cv = {
                             'Logistic Regression': LogisticRegression(random_state=42, max_iter=1000),
                             'Random Forest': RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1),
@@ -2372,7 +2567,7 @@ feature_importances = pd.Series(model.feature_importances_,
                             st.session_state.cv_fold_details = fold_details
                             st.session_state.cv_ran = True
                             
-                            st.success("CV complete! Go to **Summary** or **Visualizations** tab.")
+                            st.success("CV complete! Click the **Summary** or **Visualizations** tabs above to explore results.")
         
         # =============================================================
         # TAB 4: Summary
@@ -2480,7 +2675,7 @@ feature_importances = pd.Series(model.feature_importances_,
                             barmode='group', height=400, title='Test Set Performance',
                             color_discrete_sequence=px.colors.qualitative.Set2
                         )
-                        st.plotly_chart(fig, use_container_width=True)
+                        st.plotly_chart(fig, use_container_width=True, key='plotly_chart_3')
                     
                     st.divider()
                     st.markdown("#### 🔄 Cross Validation Comparison")
@@ -2493,7 +2688,7 @@ feature_importances = pd.Series(model.feature_importances_,
                                 error_y=dict(type='data', array=[row['Accuracy Std']]),
                                 text=str(row['Accuracy Mean']) + ' ± ' + str(row['Accuracy Std'])))
                         fig.update_layout(barmode='group', height=400, title='Accuracy with Error Bars')
-                        st.plotly_chart(fig, use_container_width=True)
+                        st.plotly_chart(fig, use_container_width=True, key='plotly_chart_4')
                     
                     with col2:
                         fig = go.Figure()
@@ -2502,7 +2697,7 @@ feature_importances = pd.Series(model.feature_importances_,
                                 error_y=dict(type='data', array=[row['F1 Std']]),
                                 text=str(row['F1 Mean']) + ' ± ' + str(row['F1 Std'])))
                         fig.update_layout(barmode='group', height=400, title='F1 Score with Error Bars')
-                        st.plotly_chart(fig, use_container_width=True)
+                        st.plotly_chart(fig, use_container_width=True, key='plotly_chart_5')
                     
                     st.divider()
                     st.markdown("#### 🎯 Radar Chart")
@@ -2514,7 +2709,7 @@ feature_importances = pd.Series(model.feature_importances_,
                                 r=[row['Accuracy'], row['Precision'], row['Recall'], row['F1-Score']],
                                 theta=categories, fill='toself', name=row['Model']))
                         fig.update_layout(polar=dict(radialaxis=dict(range=[0.9, 1.0])), height=400)
-                        st.plotly_chart(fig, use_container_width=True)
+                        st.plotly_chart(fig, use_container_width=True, key='plotly_chart_6')
                     
                     st.divider()
                     st.markdown("#### 📈 Best Model Fold-by-Fold")
@@ -2534,7 +2729,7 @@ feature_importances = pd.Series(model.feature_importances_,
                             fig.add_trace(go.Scatter(x=fold_df['Fold'], y=fold_df['F1 Score'],
                                 mode='lines+markers', name='F1', line=dict(color='#00b894', width=3)))
                             fig.update_layout(title='Fold-by-Fold: ' + best_cv_name, yaxis_range=[0.5, 1.0], height=400)
-                            st.plotly_chart(fig, use_container_width=True)
+                            st.plotly_chart(fig, use_container_width=True, key='plotly_chart_7')
                         with col2:
                             st.dataframe(fold_df, use_container_width=True, hide_index=True)
                 
@@ -2546,10 +2741,9 @@ feature_importances = pd.Series(model.feature_importances_,
                     random_forest_model = st.session_state.cv_rf_model
                     gradient_boosting_model = st.session_state.cv_gb_model
                     
-                    features_list = st.session_state.get('cv_features', [])
-                    
-                    if len(features_list) == 0:
-                        features_list = [str(i) for i in range(len(random_forest_model.feature_importances_))]
+                    # Use actual encoded feature names from training data
+                    X_train_cv = st.session_state.cv_X_train
+                    features_list = list(X_train_cv.columns) if hasattr(X_train_cv, 'columns') else [str(i) for i in range(len(random_forest_model.feature_importances_))]
                     
                     feature_relevance = {}
                     feature_relevance['Random Forest'] = random_forest_model.feature_importances_
@@ -2558,8 +2752,10 @@ feature_importances = pd.Series(model.feature_importances_,
                     
                     feature_relevance_series = {}
                     for model_name, scores in feature_relevance.items():
+                        n = len(scores)
+                        idx = features_list[:n] if len(features_list) >= n else features_list + [f'feat_{i}' for i in range(n - len(features_list))]
                         feature_relevance_series[model_name] = pd.Series(
-                            scores, index=features_list[:len(scores)]
+                            scores, index=idx
                         ).sort_values(ascending=False)
                     
                     st.success("✅ Feature relevance extracted for all models.")
@@ -2580,7 +2776,7 @@ feature_importances = pd.Series(model.feature_importances_,
                                            title=model_name + ' Feature Importance',
                                            color='Importance', color_continuous_scale=colors[i])
                                 fig.update_layout(xaxis_tickangle=-45, height=400)
-                                st.plotly_chart(fig, use_container_width=True)
+                                st.plotly_chart(fig, use_container_width=True, key=f'feat_importance_chart_{i}')
                             with col2:
                                 st.dataframe(feat_df, use_container_width=True, hide_index=True)
                     
@@ -2722,7 +2918,7 @@ feature_importances = pd.Series(model.feature_importances_,
                             cm = confusion_matrix(y_test, st.session_state.cv_lr_pred)
                             fig = px.imshow(cm, text_auto=True, title='Logistic Regression',
                                           labels=dict(x='Predicted', y='Actual'), color_continuous_scale='Blues')
-                            st.plotly_chart(fig, use_container_width=True)
+                            st.plotly_chart(fig, use_container_width=True, key='plotly_chart_9')
                             with st.expander("Classification Report"):
                                 st.code(classification_report(y_test, st.session_state.cv_lr_pred), language='text')
                         
@@ -2730,7 +2926,7 @@ feature_importances = pd.Series(model.feature_importances_,
                             cm = confusion_matrix(y_test, st.session_state.cv_rf_pred)
                             fig = px.imshow(cm, text_auto=True, title='Random Forest',
                                           labels=dict(x='Predicted', y='Actual'), color_continuous_scale='Greens')
-                            st.plotly_chart(fig, use_container_width=True)
+                            st.plotly_chart(fig, use_container_width=True, key='plotly_chart_10')
                             with st.expander("Classification Report"):
                                 st.code(classification_report(y_test, st.session_state.cv_rf_pred), language='text')
                         
@@ -2738,7 +2934,7 @@ feature_importances = pd.Series(model.feature_importances_,
                             cm = confusion_matrix(y_test, st.session_state.cv_gb_pred)
                             fig = px.imshow(cm, text_auto=True, title='Gradient Boosting',
                                           labels=dict(x='Predicted', y='Actual'), color_continuous_scale='Purples')
-                            st.plotly_chart(fig, use_container_width=True)
+                            st.plotly_chart(fig, use_container_width=True, key='plotly_chart_11')
                             with st.expander("Classification Report"):
                                 st.code(classification_report(y_test, st.session_state.cv_gb_pred), language='text')
                 
@@ -2847,7 +3043,7 @@ feature_importances = pd.Series(model.feature_importances_,
                         
                         fig = px.bar(cat_data, x='Category', y='Count', title='Feature Categories Distribution',
                                    color='Category', color_discrete_sequence=px.colors.qualitative.Set2)
-                        st.plotly_chart(fig, use_container_width=True)
+                        st.plotly_chart(fig, use_container_width=True, key='plotly_chart_12')
                     
                     with col2:
                         st.markdown("### 🤝 Model Agreement")
@@ -2948,5 +3144,7 @@ feature_importances = pd.Series(model.feature_importances_,
                         "feature_relevance_summary.txt",
                         "text/plain"
                     )
+
+
 if __name__ == "__main__":
     main()

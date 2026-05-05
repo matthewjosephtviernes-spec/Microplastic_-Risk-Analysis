@@ -24,12 +24,13 @@ def clean_data(df, target):
     if y.dtype == "object":
         y = LabelEncoder().fit_transform(y.astype(str))
 
-    for col in X.columns:
-        if X[col].dtype == "object":
-            X[col] = LabelEncoder().fit_transform(X[col].astype(str))
+    categorical_cols = X.select_dtypes(include=['object']).columns.tolist()
+    if categorical_cols:
+        X = pd.get_dummies(X, columns=categorical_cols, drop_first=True)
 
+    X_cols = X.columns
     X = SimpleImputer(strategy="mean").fit_transform(X)
-    X = pd.DataFrame(X)
+    X = pd.DataFrame(X, columns=X_cols)
 
     return X, y
 
