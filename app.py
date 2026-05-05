@@ -12,7 +12,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score, StratifiedKFold
+from sklearn.model_selection import train_test_split, GridSearchCV, RandomizedSearchCV, cross_val_score, StratifiedKFold
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler
 from sklearn.linear_model import LogisticRegression, LinearRegression
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, StackingClassifier
@@ -2027,12 +2027,6 @@ feature_importances = pd.Series(model.feature_importances_,
 
                             # ── Train Models ─────────────────────────────────────────
                             st.markdown("### 🤖 Train Models")
-                            
-                            from sklearn.ensemble import GradientBoostingClassifier
-                            from sklearn.model_selection import RandomizedSearchCV
-                            from sklearn.pipeline import make_pipeline
-                            from sklearn.preprocessing import StandardScaler
-
                             # Enable tuning toggle
                             enable_tuning = st.session_state.get("enable_tuning", False)
 
