@@ -2357,7 +2357,6 @@ feature_importances = pd.Series(model.feature_importances_,
                     with col3:
                         st.markdown("**Gradient Boosting**")
                         gb_pb = st.progress(0)
-                        from sklearn.ensemble import GradientBoostingClassifier
                         gradient_boosting_model = GradientBoostingClassifier(n_estimators=100, random_state=42)
                         gradient_boosting_model.fit(X_train, y_train)
                         gb_pb.progress(100)
@@ -2496,7 +2495,6 @@ feature_importances = pd.Series(model.feature_importances_,
                 if True:  # auto-run K-Fold CV
                     with st.spinner('Running ' + str(cv_folds) + '-Fold Cross Validation...'):
                         
-                        from sklearn.ensemble import GradientBoostingClassifier
                         models_cv = {
                             'Logistic Regression': LogisticRegression(random_state=42, max_iter=1000),
                             'Random Forest': RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1),
